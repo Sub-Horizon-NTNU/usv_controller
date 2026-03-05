@@ -12,9 +12,15 @@ find_package(mavros REQUIRED)
 find_package(mavros_msgs REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(sensor_msgs REQUIRED)
+find_package(geometry_msgs REQUIRED)
+find_package(tf2 REQUIRED)
+find_package(tf2_geometry_msgs REQUIRED)
 
 add_executable(usv_controller src/main.cpp
-src/Controller.cpp)
+src/Controller.cpp
+src/PID.cpp
+src/USV.cpp
+)
 target_include_directories(usv_controller PRIVATE ${CMAKE_SOURCE_DIR}/include)
 
 ament_target_dependencies(usv_controller 
@@ -22,7 +28,9 @@ ament_target_dependencies(usv_controller
   mavros
   mavros_msgs
   sensor_msgs
-  
+  geometry_msgs
+  tf2_geometry_msgs
+  tf2
 )
 
 install(TARGETS usv_controller

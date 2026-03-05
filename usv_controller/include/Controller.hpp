@@ -5,26 +5,27 @@
 #include "mavros_msgs/srv/command_home.hpp"
 #include "mavros_msgs/srv/set_mode.hpp"
 #include <chrono>
-#include <geometry_msgs/msg/detail/pose_stamped__struct.hpp>
-#include <geometry_msgs/msg/detail/twist_stamped__struct.hpp>
-#include <mavros_msgs/msg/detail/position_target__struct.hpp>
-#include <mavros_msgs/srv/detail/set_mode__struct.hpp>
-#include <rclcpp/executors.hpp>
-#include <rclcpp/rate.hpp>
-#include <rclcpp/time.hpp>
-#include <thread>
+#include <cmath>
+#include <memory>
+
 #include <mavros_msgs/msg/position_target.hpp>
 #include <mavros_msgs/msg/waypoint_reached.hpp>
 
 #include <mavros_msgs/msg/waypoint.hpp>
 #include <mavros_msgs/msg/waypoint_list.hpp>
+
 #include <mavros_msgs/msg/trajectory.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <geometry_msgs/msg/twist_stamped.hpp>
 
+#include <geometry_msgs/msg/pose_stamped.hpp>
 
-
-
+#include <functional>
+#include <tf2/LinearMath/Vector3.h>
+#include "Structures.hpp"
+#include "USV.hpp"
+#include "PathHandler.hpp"
+#include "PID.hpp"
 
 
 class Controller : public rclcpp::Node
@@ -32,141 +33,75 @@ class Controller : public rclcpp::Node
 public:
     Controller() : Node("usv_controller")
     {
-        //init();
-        //while(true){
-        //    set_mode("MANUAL");
-        //    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-        //    set_mode("AUTO");
-        //    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-        //    set_mode("GUIDED");
-        //    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-        //}   
-        //rclcpp::Rate(20.0);
-
-        // https://medium.com/@sidharthmohannair/beyond-waypoints-mastering-ardupilot-offboard-control-with-mavros-guided-mode-56234cb867e5
-        //velocity_pub_ = this->create_publisher<geometry_msgs::msg::TwistStamped>("/mavros/setpoint_velocity/cmd_vel",10);
-        //velocity_pub_timer_ = this->create_wall_timer(
-        //    std::chrono::milliseconds(10),
-        //    std::bind(&Controller::publish_velocity_cmd, this));
-        trajectory_pub_ = this->create_publisher<mavros_msgs::msg::PositionTarget>("/mavros/setpoint_raw/local", 10);
-        trajectory_timer_ = this->create_wall_timer(
-            std::chrono::milliseconds(250),
-            std::bind(&Controller::publish_trajectory_local, this));
-        //pose_publisher_ = this->create_publisher<geometry_msgs::msg::PoseStamped>("/mavros/setpoint_position/local", 10);
-        ////pose_publisher_timer_ = this->create_wall_timer(
-        ////    std::chrono::milliseconds(100),
-        ////    std::bind(&Controller::publish_position_setpoint, this));
+        //this->waypoints_ = generate_circle_path(30,7.0,8.0,5.0);
+        //current_waypoint_ = waypoints_[current_waypoint_index_]; 
         
-    }
+      
 
-    void init(){
-        command_home_ = this->create_client<mavros_msgs::srv::CommandHome>("/mavros/cmd/set_home");
-        set_mode_client_ = this->create_client<mavros_msgs::srv::SetMode>("/mavros/cmd/set_mode");
-    }
-
-    void publish_velocity_cmd(){
-        geometry_msgs::msg::TwistStamped vel_cmd;
-        vel_cmd.twist.linear.x = 0.0;
-        vel_cmd.twist.linear.y = 1.0;
-        vel_cmd.twist.linear.z = 0.0;
-        vel_cmd.twist.angular.x = 0;
-        vel_cmd.twist.angular.y = 0;
-        vel_cmd.twist.angular.z = 0;
-
-        velocity_pub_->publish(vel_cmd);
-    }
-    void publish_position_setpoint(){
-        geometry_msgs::msg::PoseStamped pose;
-        pose.pose.position.x = 10.0;
-        pose.pose.position.y = 2.0;
-        pose.pose.position.z = -1;
-        pose_publisher_->publish(pose);
-
-
-    }
-
-    void publish_trajectory_local(){
-        using pt = mavros_msgs::msg::PositionTarget;
-        pt target;
-        target.header.stamp = this->now();
-        target.header.frame_id = "map";
-        target.coordinate_frame = pt::FRAME_LOCAL_NED;
-        // Ignore acceleration, and yaw  https://docs.ros.org/en/noetic/api/mavros_msgs/html/msg/PositionTarget.html
-        target.type_mask =
-            pt::IGNORE_AFX |
-            pt::IGNORE_AFY |
-            pt::IGNORE_AFZ |
-            pt::IGNORE_VZ |
-            pt::IGNORE_YAW |
-            pt::IGNORE_YAW_RATE;
+        param_max_velocity_ = 3.0;
+        param_wp_radius_ = 0.3;
         
-        target.position.x = 0.0;
-        target.position.y = 0.0;
-        target.position.z = -1.0; 
+        param_max_velocity_ = 2.0;
+        param_kp_ = 1.0;
+        param_ki_ = 0.0000
+        param_kd_ = 0.0;
         
-        target.velocity.x = 0.0; 
-        target.velocity.y = 0.5;
-        target.velocity.z = 0.0;
-    
-        trajectory_pub_->publish(target);
+        this->path_handler_ = std::make_unique<PathHandler>(param_wp_radius_);
+        this->usv_ = std::make_unique<USV>(param_kp_,param_ki_,param_kd_,param_max_velocity_);
+
+        position_subscriber_ = this->create_subscription<geometry_msgs::msg::PoseStamped>(
+            "/ap/pose/filtered",  // /mavros/local_position/pose"
+            rclcpp::SensorDataQoS(),[this](const geometry_msgs::msg::PoseStamped::SharedPtr msg){
+
+            this->usv_->set_pose_cb(msg);
+            
+            path_handler_->update(usv_->get_position_x(),usv_->get_position_y());
+            usv_->set_target_pose(path_handler_->get_target_waypoint().x, path_handler_->get_target_waypoint().y, 0);
+            usv_->update();
+            RCLCPP_INFO(this->get_logger(), "Pose [%.2f, %.2f] | Target [%.2f,%.2f] | Dist: %.2f ",
+                usv_->get_position_x(),  usv_->get_position_y(),  path_handler_->get_target_waypoint().x,  path_handler_->get_target_waypoint().y, 
+                std::hypot(path_handler_->get_target_waypoint().x-usv_->get_position_x(),path_handler_->get_target_waypoint().y-usv_->get_position_y()));
+        });
+            
+        velocity_publisher_ = this->create_publisher<geometry_msgs::msg::TwistStamped>("/mavros/setpoint_velocity/cmd_vel", 10);
+
+        update_timer_ = this->create_wall_timer(
+              std::chrono::milliseconds(50),
+              [this](){
+                
+                velocity_publisher_->publish(usv_->get_velocity_cmd());
+
+            }
+        );
+
+
     }
 
-    bool set_home(){
-        auto request = std::make_shared<mavros_msgs::srv::CommandHome::Request>();
-        request->current_gps = true;
-    
-          while (!command_home_->wait_for_service(std::chrono::milliseconds(1000))) {
-            if (!rclcpp::ok()) {
-            RCLCPP_ERROR(this->get_logger(), "Set home service failed");
-            return false;
-            }
-            RCLCPP_INFO(this->get_logger(), "Set home service not available, retrying");
-        }
-        auto future = command_home_->async_send_request(request);
-        if(rclcpp::spin_until_future_complete(this->shared_from_this(),future) == rclcpp::FutureReturnCode::SUCCESS){
-            if(future.get()->success){
-                return true;
-            }
-            return false;
-        }
-        return false;
+    inline float calculate_heading(const double &from_x, const double &from_y, const double &to_x, const double &to_y){
+        float heading = std::atan2(to_y-from_y, to_x-from_x);
+        return heading;
     }
 
-    bool set_mode(std::string mode){
-        if(mode != "MANUAL" && mode != "AUTO" && mode !="GUIDED"){
-            RCLCPP_ERROR(this->get_logger(),"Set mode doesn't exist");
-            return false;
-        }
-        while(!set_mode_client_->wait_for_service(std::chrono::milliseconds(1000))){
-            if(!rclcpp::ok()){
-                RCLCPP_ERROR(this->get_logger(),"Set mode failed");
-                return false;
-            }
-            RCLCPP_INFO(this->get_logger(), "Setting mode failed");
-        }
-        auto request = std::make_shared<mavros_msgs::srv::SetMode::Request>();
-        request->custom_mode = mode;
-        auto future = set_mode_client_->async_send_request(request);
-        if(rclcpp::spin_until_future_complete(this->shared_from_this(),future) == rclcpp::FutureReturnCode::SUCCESS){
-            auto result = future.get();
-            if(result->mode_sent){
-                return true;
-            }
-            return false;
-        }
-        return false;
-    }
-
+   
 private:
 
-    rclcpp::Client<mavros_msgs::srv::CommandHome>::SharedPtr command_home_;
-    rclcpp::Client<mavros_msgs::srv::SetMode>::SharedPtr set_mode_client_;
-    rclcpp::TimerBase::SharedPtr trajectory_timer_;
-    rclcpp::Publisher<mavros_msgs::msg::PositionTarget>::SharedPtr trajectory_pub_;
-    rclcpp::Publisher<geometry_msgs::msg::TwistStamped>::SharedPtr velocity_pub_;
-    rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr pose_publisher_;
+    std::unique_ptr<USV> usv_;
+    std::unique_ptr<PathHandler> path_handler_;
+
+    rclcpp::TimerBase::SharedPtr update_timer_;
+    rclcpp::Publisher<geometry_msgs::msg::TwistStamped>::SharedPtr velocity_publisher_;
+    rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr position_subscriber_; // Local!
     rclcpp::TimerBase::SharedPtr velocity_pub_timer_;
     rclcpp::TimerBase::SharedPtr pose_publisher_timer_;
+
+    //Parameters
+    double param_max_velocity_;
+    double param_kp_;
+    double param_ki_;
+    double param_kd_;
+    double param_wp_radius_;
+
+
 
 };
 
