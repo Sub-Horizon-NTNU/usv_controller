@@ -13,11 +13,10 @@
 
 class USV{
     public:
-    USV(const double &kp,const double &ki,const double &kd, const float &max_velocity){
+    USV(const float max_velocity, const double &kp,const double &ki,const double &kd, const float &max_angular_velocity){
 
-        this->pid_x_ = std::make_unique<PID>(kp,ki,kd,max_velocity);
-        this->pid_y_ = std::make_unique<PID>(kp,ki,kd,max_velocity);
-        this->pid_heading_ = std::make_unique<PID>(kp,ki,kd,max_velocity);
+  
+        this->pid_heading_ = std::make_unique<PID>(kp,ki,kd,max_angular_velocity);
     }
     void set_pose_cb(const geometry_msgs::msg::PoseStamped::SharedPtr pose){
         current_states_.x = pose->pose.position.y;
@@ -33,20 +32,28 @@ class USV{
         current_states_.heading = y;
     }
 
-    void set_target_pose(float x, float y, float heading){
+    void set_target_pose(float x, float y, float heading, bool hold_position){
         target_states_.x = x;
         target_states_.y = y;
         target_states_.heading = heading;
+        hold_position_ = hold_position_;
+
     }
 
     void update(){
-        target_states_.vx = target_states_.x-current_states_.x
+        float distance = std::abs(std::hypot(target_states_.x-current_states_.x,target_states_.y-current_states_.y));
+        float velocity;
+        float follow_velocity = max_velocity_;
+        if(hold_position_){
+            velocity = braking_radius_/distance * follow_velocity;
+        } else {
+            velocity = follow_velocity;
+        }
+        
+        float vx = (target_states_.x-current_states_.x)/distance * follow_velocity;
+        float vy = (target_states_.y-current_states_.y)/distance * follow_velocity;
 
-
-
-       velocity_x_ = pid_x_->update(target_states_.x, current_states_.x);
-       velocity_y_ = pid_y_->update(target_states_.y, current_states_.y);
-       angular_velocity_z_ =  pid_heading_->update(target_states_.heading, current_states_.heading);
+        angular_velocity_z_ =  pid_heading_->update(target_states_.heading, current_states_.heading);
     }
 
     geometry_msgs::msg::TwistStamped  get_velocity_cmd(){
@@ -72,13 +79,14 @@ class USV{
     private:
         States current_states_;
         States target_states_;
-
+        bool hold_position_;
+        float braking_radius_;
+        float velocity_;
         float velocity_x_;
         float velocity_y_;
         float angular_velocity_z_;
+        float max_velocity_;
 
-        std::unique_ptr<PID> pid_x_;
-        std::unique_ptr<PID> pid_y_;
         std::unique_ptr<PID> pid_heading_;
         
 

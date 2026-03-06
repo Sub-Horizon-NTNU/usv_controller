@@ -23,12 +23,8 @@ public:
     } 
 
 
-    States get_target_waypoint(){
-        States states{};
-        states.x = current_target_waypoint_.x;
-        states.y = current_target_waypoint_.y;
-
-        return states;
+    Waypoint get_target_waypoint(){
+        return current_target_waypoint_;
     }
 
     void update(float x, float y){
@@ -38,6 +34,7 @@ public:
         if(current_position_x_ != x || current_position_y_ != y){
             updated_position = true;
         }
+
         //update current position
         current_position_x_ = x;
         current_position_y_ = y;
@@ -46,10 +43,16 @@ public:
         double delta_p = std::hypot(current_position_x_-current_target_waypoint_.x,current_position_y_-current_target_waypoint_.y);
         if( (std::abs(delta_p) < wp_radius_ && updated_position)){
            current_waypoint_index_+=1;
+           //This should rather default to clearing the list of waypoints!
            if(current_waypoint_index_> waypoints_.size()){
                current_waypoint_index_ = 0;
            }
+           //update target waypoint
            current_target_waypoint_ = waypoints_[current_waypoint_index_];
+           if(current_target_waypoint_.hold_at_point){
+                
+           }
+
         }
     }
 

@@ -33,31 +33,29 @@ class Controller : public rclcpp::Node
 public:
     Controller() : Node("usv_controller")
     {
-        //this->waypoints_ = generate_circle_path(30,7.0,8.0,5.0);
-        //current_waypoint_ = waypoints_[current_waypoint_index_]; 
-        
-      
-
         param_max_velocity_ = 3.0;
         param_wp_radius_ = 0.3;
-        
+        param_max_angular_velocity_ = 0.5;
         param_max_velocity_ = 2.0;
         param_kp_ = 1.0;
-        param_ki_ = 0.0000
+        param_ki_ = 0.0;
         param_kd_ = 0.0;
         
         this->path_handler_ = std::make_unique<PathHandler>(param_wp_radius_);
-        this->usv_ = std::make_unique<USV>(param_kp_,param_ki_,param_kd_,param_max_velocity_);
+        this->usv_ = std::make_unique<USV>(param_max_velocity_,param_kp_,param_ki_,param_kd_, param_max_angular_velocity_);
 
         position_subscriber_ = this->create_subscription<geometry_msgs::msg::PoseStamped>(
-            "/ap/pose/filtered",  // /mavros/local_position/pose"
+            "/ap/pose/filtered",  // Requires ArduPilot DDS /mavros/local_position/pose" 
             rclcpp::SensorDataQoS(),[this](const geometry_msgs::msg::PoseStamped::SharedPtr msg){
 
             this->usv_->set_pose_cb(msg);
             
             path_handler_->update(usv_->get_position_x(),usv_->get_position_y());
-            usv_->set_target_pose(path_handler_->get_target_waypoint().x, path_handler_->get_target_waypoint().y, 0);
+           
+            usv_->set_target_pose(path_handler_->get_target_waypoint().x, path_handler_->get_target_waypoint().y, 0.0,path_handler_->get_target_waypoint().hold_at_point); //replace with wp
+           
             usv_->update();
+        
             RCLCPP_INFO(this->get_logger(), "Pose [%.2f, %.2f] | Target [%.2f,%.2f] | Dist: %.2f ",
                 usv_->get_position_x(),  usv_->get_position_y(),  path_handler_->get_target_waypoint().x,  path_handler_->get_target_waypoint().y, 
                 std::hypot(path_handler_->get_target_waypoint().x-usv_->get_position_x(),path_handler_->get_target_waypoint().y-usv_->get_position_y()));
@@ -96,6 +94,7 @@ private:
 
     //Parameters
     double param_max_velocity_;
+    double param_max_angular_velocity_;
     double param_kp_;
     double param_ki_;
     double param_kd_;
