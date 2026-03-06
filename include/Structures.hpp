@@ -17,4 +17,5 @@ struct States{
     float heading{};
     float vx{};
     float vy{};
+    float angular_velocity{};
 };

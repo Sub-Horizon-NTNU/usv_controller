@@ -33,7 +33,7 @@ class Controller : public rclcpp::Node
 public:
     Controller() : Node("usv_controller")
     {
-        param_max_velocity_ = 3.0;
+      
         param_wp_radius_ = 0.3;
         param_max_angular_velocity_ = 0.5;
         param_max_velocity_ = 2.0;
@@ -56,19 +56,17 @@ public:
            
             usv_->update();
         
-            RCLCPP_INFO(this->get_logger(), "Pose [%.2f, %.2f] | Target [%.2f,%.2f] | Dist: %.2f ",
+            RCLCPP_INFO(this->get_logger(), "Pose [%.2f, %.2f] | Target [%.2f,%.2f] | Dist: %.2f | Vel [%.2f, %.2f] Angle: %.2f ",
                 usv_->get_position_x(),  usv_->get_position_y(),  path_handler_->get_target_waypoint().x,  path_handler_->get_target_waypoint().y, 
-                std::hypot(path_handler_->get_target_waypoint().x-usv_->get_position_x(),path_handler_->get_target_waypoint().y-usv_->get_position_y()));
+                std::hypot(path_handler_->get_target_waypoint().x-usv_->get_position_x(),path_handler_->get_target_waypoint().y-usv_->get_position_y()), usv_->get_target_states().vx, usv_->get_target_states().vy,usv_->get_target_states().heading*180/M_PI);
         });
             
         velocity_publisher_ = this->create_publisher<geometry_msgs::msg::TwistStamped>("/mavros/setpoint_velocity/cmd_vel", 10);
 
         update_timer_ = this->create_wall_timer(
-              std::chrono::milliseconds(50),
+              std::chrono::milliseconds(30),
               [this](){
-                
                 velocity_publisher_->publish(usv_->get_velocity_cmd());
-
             }
         );
 
