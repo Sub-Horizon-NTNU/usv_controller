@@ -35,17 +35,17 @@ public:
     {
       
         param_wp_radius_ = 0.3;
-        param_max_angular_velocity_ = 0.5;
+        param_max_angular_velocity_ = 5.5;
         param_max_velocity_ = 2.0;
         param_kp_ = 1.0;
-        param_ki_ = 0.0;
-        param_kd_ = 0.0;
+        param_ki_ = 0.1;
+        param_kd_ = 0.01;
         
         this->path_handler_ = std::make_unique<PathHandler>(param_wp_radius_);
         this->usv_ = std::make_unique<USV>(param_max_velocity_,param_kp_,param_ki_,param_kd_, param_max_angular_velocity_);
 
         position_subscriber_ = this->create_subscription<geometry_msgs::msg::PoseStamped>(
-            "/ap/pose/filtered",  // Requires ArduPilot DDS /mavros/local_position/pose" 
+            "/mavros/local_position/pose",  // Requires ArduPilot DDS /mavros/local_position/pose Ardupilot dds/ap/pose/filtered"  
             rclcpp::SensorDataQoS(),[this](const geometry_msgs::msg::PoseStamped::SharedPtr msg){
 
             this->usv_->set_pose_cb(msg);
@@ -56,9 +56,10 @@ public:
            
             usv_->update();
         
-            RCLCPP_INFO(this->get_logger(), "Pose [%.2f, %.2f] | Target [%.2f,%.2f] | Dist: %.2f | Vel [%.2f, %.2f] Angle: %.2f ",
+            RCLCPP_INFO(this->get_logger(), "Pose [%.2f, %.2f] | Target [%.2f,%.2f] | Dist: %.2f | Vel [%.2f, %.2f] Target/Current/diff angle: [%.2f,%.2f,%.2f], PID: %.2f ",
                 usv_->get_position_x(),  usv_->get_position_y(),  path_handler_->get_target_waypoint().x,  path_handler_->get_target_waypoint().y, 
-                std::hypot(path_handler_->get_target_waypoint().x-usv_->get_position_x(),path_handler_->get_target_waypoint().y-usv_->get_position_y()), usv_->get_target_states().vx, usv_->get_target_states().vy,usv_->get_target_states().heading*180/M_PI);
+                std::hypot(path_handler_->get_target_waypoint().x-usv_->get_position_x(),path_handler_->get_target_waypoint().y-usv_->get_position_y()), usv_->get_target_states().vx, usv_->get_target_states().vy
+                ,usv_->get_target_states().heading*180/M_PI, usv_->get_states().heading*180/M_PI,(usv_->get_states().heading-usv_->get_target_states().heading)*180/M_PI,usv_->get_pid_output());
         });
             
         velocity_publisher_ = this->create_publisher<geometry_msgs::msg::TwistStamped>("/mavros/setpoint_velocity/cmd_vel", 10);

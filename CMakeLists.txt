@@ -36,6 +36,11 @@ ament_target_dependencies(usv_controller
 install(TARGETS usv_controller
 DESTINATION lib/${PROJECT_NAME})
 
+
+install(DIRECTORY launch
+  DESTINATION share/${PROJECT_NAME}
+)
+
 install(DIRECTORY launch
   DESTINATION lib/${PROJECT_NAME}
 )

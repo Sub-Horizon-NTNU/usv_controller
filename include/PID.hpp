@@ -17,17 +17,23 @@ class PID{
         setpoint_ = setpoint;
     }
     
-    float update(double setpoint, double current){
-        float error = setpoint_-current;
-        float dt = (std::chrono::steady_clock::now()-prev_time_).count();
-        prev_time_ = std::chrono::steady_clock::now();
+    float update(const double &error){
+        std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+        float dt = std::chrono::duration<float>(now-prev_time_).count();
+        prev_time_ = now;
 
         float p = kp_*error;
         i_ += ki_*error*dt;
+        if(i_>max_output_){
+            i_ = max_output_;
+        }
+        if(i_<-max_output_){
+            i_ = -max_output_;
+        }
+
         float d = kd_*(error-prev_error_)/dt;
+        prev_error_ = error;
         float output = p+i_+d;
-
-
 
         //Check if out of bounds
         if(std::abs(output)> max_output_){
