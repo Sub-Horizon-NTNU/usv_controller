@@ -6,6 +6,7 @@
 #include "mavros_msgs/srv/set_mode.hpp"
 #include <chrono>
 #include <cmath>
+#include <geometry_msgs/msg/detail/twist_stamped__struct.hpp>
 #include <memory>
 
 #include <mavros_msgs/msg/position_target.hpp>
@@ -33,53 +34,66 @@ class Controller : public rclcpp::Node
 public:
     Controller() : Node("usv_controller")
     {
-      
-        param_wp_radius_ = 0.3;
-        param_max_angular_velocity_ = 5.5;
-        param_max_velocity_ = 2.0;
-        param_kp_ = 1.0;
-        param_ki_ = 0.1;
-        param_kd_ = 0.01;
-        
+        init_parameters();
+
         this->path_handler_ = std::make_unique<PathHandler>(param_wp_radius_);
-        this->usv_ = std::make_unique<USV>(param_max_velocity_,param_kp_,param_ki_,param_kd_, param_max_angular_velocity_);
+        this->usv_ = std::make_unique<USV>(param_max_velocity_,param_kp_,param_ki_,param_kd_, param_max_angular_velocity_,parama_braking_radius_);
 
-        position_subscriber_ = this->create_subscription<geometry_msgs::msg::PoseStamped>(
-            "/mavros/local_position/pose",  // Requires ArduPilot DDS /mavros/local_position/pose Ardupilot dds/ap/pose/filtered"  
-            rclcpp::SensorDataQoS(),[this](const geometry_msgs::msg::PoseStamped::SharedPtr msg){
-
-            this->usv_->set_pose_cb(msg);
-            
-            path_handler_->update(usv_->get_position_x(),usv_->get_position_y());
-           
-            usv_->set_target_pose(path_handler_->get_target_waypoint().x, path_handler_->get_target_waypoint().y, 0.0,path_handler_->get_target_waypoint().hold_at_point); //replace with wp
-           
-            usv_->update();
         
+        position_subscriber_ = this->create_subscription<geometry_msgs::msg::PoseStamped>(
+            "/mavros/local_position/pose",  // Mavros: /mavros/local_position/pose Ardupilot dds/ap/pose/filtered"  
+            rclcpp::SensorDataQoS(),
+            [this](const geometry_msgs::msg::PoseStamped::SharedPtr msg){
+
+            this->usv_->set_pose_cb(msg); // Set current position and orientation 
+            
+            path_handler_->update(usv_->get_position_x(),usv_->get_position_y()); //Inform the path handler about the position of the USV, might update to the next waypoint
+           
+            usv_->set_target_pose(path_handler_->get_target_waypoint().x, path_handler_->get_target_waypoint().y,0.0,path_handler_->get_target_waypoint().hold_at_point); //replace with wp
+           
+            usv_->update(); //Update the regulator etc
+            
+            //Log info
             RCLCPP_INFO(this->get_logger(), "Pose [%.2f, %.2f] | Target [%.2f,%.2f] | Dist: %.2f | Vel [%.2f, %.2f] Target/Current/diff angle: [%.2f,%.2f,%.2f], PID: %.2f ",
                 usv_->get_position_x(),  usv_->get_position_y(),  path_handler_->get_target_waypoint().x,  path_handler_->get_target_waypoint().y, 
                 std::hypot(path_handler_->get_target_waypoint().x-usv_->get_position_x(),path_handler_->get_target_waypoint().y-usv_->get_position_y()), usv_->get_target_states().vx, usv_->get_target_states().vy
                 ,usv_->get_target_states().heading*180/M_PI, usv_->get_states().heading*180/M_PI,(usv_->get_states().heading-usv_->get_target_states().heading)*180/M_PI,usv_->get_pid_output());
         });
             
+        // Velocity publisher
         velocity_publisher_ = this->create_publisher<geometry_msgs::msg::TwistStamped>("/mavros/setpoint_velocity/cmd_vel", 10);
-
         update_timer_ = this->create_wall_timer(
               std::chrono::milliseconds(30),
               [this](){
                 velocity_publisher_->publish(usv_->get_velocity_cmd());
             }
         );
-
-
     }
 
-    inline float calculate_heading(const double &from_x, const double &from_y, const double &to_x, const double &to_y){
-        float heading = std::atan2(to_y-from_y, to_x-from_x);
-        return heading;
+    void init_parameters(){
+        this->declare_parameter<double>("wp_radius", 0.2);
+        this->declare_parameter<double>("max_angular_velocity", 5.0);
+        this->declare_parameter<double>("max_linear_velocity", 2.0);
+        this->declare_parameter<double>("braking_radius", 3.0);
+
+        this->declare_parameter<double>("yaw_kp", 1.0);
+        this->declare_parameter<double>("yaw_ki", 0.0);
+        this->declare_parameter<double>("yaw_kd", 0.0);
+
+        param_wp_radius_ = this->get_parameter("wp_radius").get_value<double>();
+        param_max_angular_velocity_ = this->get_parameter("max_angular_velocity").get_value<double>();
+        param_max_velocity_ = this->get_parameter("max_linear_velocity").get_value<double>();
+        parama_braking_radius_ = this->get_parameter("braking_radius").get_value<double>();
+        param_kp_ = this->get_parameter("yaw_kp").get_value<double>();
+        param_ki_ = this->get_parameter("yaw_ki").get_value<double>();
+        param_kd_ = this->get_parameter("yaw_kd").get_value<double>();
     }
 
-   
+    ~Controller(){
+        geometry_msgs::msg::TwistStamped null_vel{};
+        velocity_publisher_->publish(null_vel);
+    }
+
 private:
 
     std::unique_ptr<USV> usv_;
@@ -98,6 +112,7 @@ private:
     double param_ki_;
     double param_kd_;
     double param_wp_radius_;
+    double parama_braking_radius_;
 
 
 

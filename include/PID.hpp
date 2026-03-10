@@ -7,16 +7,8 @@ class PID{
     public:
     PID(const double &kp,const double &ki,const double &kd, double max_output) 
     : prev_time_(std::chrono::steady_clock::now()), kp_(kp), ki_(ki), kd_(kd), prev_error_(0), max_output_(max_output), i_(0.0)
-    {
-    
+    {}
 
-    }
-
-
-    void set_setpoint(double setpoint){
-        setpoint_ = setpoint;
-    }
-    
     float update(const double &error){
         std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
         float dt = std::chrono::duration<float>(now-prev_time_).count();
@@ -55,7 +47,6 @@ class PID{
     private:
         std::chrono::steady_clock::time_point prev_time_;
         
-        float setpoint_{};
         float kp_;
         float ki_;
         float kd_;

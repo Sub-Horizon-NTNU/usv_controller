@@ -3,6 +3,7 @@
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <cmath>
 #include <vector>
+#include <chrono>
 
 class PathHandler{
 public:
@@ -15,7 +16,7 @@ public:
     }
 
     //Test functions for generating path
-   std::vector<Waypoint> generate_circle_path(const int number_of_points, const double radius, float x, float y){
+    std::vector<Waypoint> generate_circle_path(const int number_of_points, const double radius, float x, float y){
         std::vector<Waypoint> waypoints;
         for(int i = 0; i < number_of_points; i++){
             double angle = static_cast<double>(i+1)*2*M_PI/number_of_points;
@@ -40,8 +41,7 @@ public:
     }
 
     void clear_waypoints(){
-        waypoints_ = nullwp_;
-        
+        waypoints_.clear();
     }
     void add_waypoint(Waypoint waypoint){
         waypoints_.push_back(waypoint);
@@ -59,7 +59,7 @@ public:
 
         //Check if position is new
         bool updated_position{};
-        if(current_position_x_ != x || current_position_y_ != y){
+        if(current_position_x_ != x || current_position_y_ != y ){
             updated_position = true;
         }
 
@@ -69,26 +69,29 @@ public:
 
         //Check if the new targeted waypoint can be updated.
         double delta_p = std::hypot(current_position_x_-current_target_waypoint_.x,current_position_y_-current_target_waypoint_.y);
-        if( (std::abs(delta_p) < wp_radius_ && updated_position)){
+
+        if(current_target_waypoint_.hold_at_point){
+                
+        }
+
+        if( (std::abs(delta_p) < wp_radius_) && updated_position){
            current_waypoint_index_+=1;
+
            //This should rather default to clearing the list of waypoints!
            if(current_waypoint_index_>= waypoints_.size()){
                current_waypoint_index_ = 0;
            }
+
            //update target waypoint
            current_target_waypoint_ = waypoints_[current_waypoint_index_];
-           if(current_target_waypoint_.hold_at_point){
-                
-           }
+           current_waypoint_time_start = std::chrono::steady_clock::time_point::now();
 
+           
         }
     }
 
-    
-
 
 private:
-
     float current_position_x_{};
     float current_position_y_{};
     float heading_{};
@@ -98,6 +101,7 @@ private:
     std::vector<Waypoint> waypoints_;
     Waypoint current_target_waypoint_;
     int current_waypoint_index_{};
+    std::chrono::steady_clock::time_point current_waypoint_time_start //Time when waypoint timer started 
     
     
 
