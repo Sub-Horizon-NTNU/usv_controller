@@ -1,15 +1,6 @@
 
 #pragma once
 
-struct Waypoint{
-    double x{}; // m
-    double y{}; // m
-    double z{}; // m
-    double heading{}; //rad
-    bool hold_at_point{}; // Point should be held
-    double hold_time{}; // Point hold duration (seconds)
-};
-
 struct States{
     float x{}; //m
     float y{}; //m
@@ -18,4 +9,13 @@ struct States{
     float vx{};// m/s
     float vy{};// m/s
     float angular_velocity{}; // rad/s
+};
+
+struct ControlCmd {
+    float x{};
+    float y{};
+    float heading{};
+    bool heading_on_path{};
+    bool hold_position{};
+    bool brake{};
 };

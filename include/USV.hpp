@@ -1,7 +1,6 @@
 #pragma once
 
 #include <cmath>
-#include <geometry_msgs/msg/detail/twist_stamped__struct.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <geometry_msgs/msg/twist_stamped.hpp>
 #include "Structures.hpp"
@@ -18,7 +17,7 @@ class USV{
     USV(const float &max_velocity, const double &kp,const double &ki,const double &kd, const float &max_angular_velocity, const float &braking_radius)
     : max_velocity_(max_velocity), braking_radius_(braking_radius)
     {
-        this->pid_heading_ = std::make_unique<PID>(kp,ki,kd,max_angular_velocity);
+        this->pid_heading_ = std::make_shared<PID>(kp,ki,kd,max_angular_velocity);
     }
     void set_pose_cb(const geometry_msgs::msg::PoseStamped::SharedPtr pose){
         //ENU TO NED
@@ -30,11 +29,10 @@ class USV{
         geometry_msgs::msg::Quaternion quat_msg = pose->pose.orientation;
         tf2::fromMsg(quat_msg, quat_tf);
         //For rotating the quaternion..
-        
         static tf2::Quaternion heading_rotate;
         heading_rotate.setRPY(0.0, 0.0, -M_PI/2);
-        
-        tf2::Quaternion heading_rot = heading_rotate*quat_tf;
+
+        tf2::Quaternion heading_rot = heading_rotate*quat_tf; //transforms from ENU to NED
         heading_rot.normalize();
         set_current_orientation(heading_rot);
 
@@ -42,50 +40,46 @@ class USV{
         double roll,pitch,yaw;
         m_rot.getRPY(roll, pitch, yaw);
         current_states_.heading = -yaw; // Sign introduced to follow NED conventions
-        
+
     }
+    void set_control_cmd(const ControlCmd &control_cmd){
+        control_command_.x = control_cmd.x;
+        control_command_.y = control_cmd.y;
+        control_command_.heading = control_cmd.heading;
+        control_command_.hold_position = control_cmd.hold_position;
+        control_command_.heading_on_path = control_cmd.heading_on_path;
 
-    void set_target_pose(float x, float y, float heading_rad, bool hold_position){
-        target_states_.x = x;
-        target_states_.y = y;
-        target_states_.heading = heading_rad;
-        hold_position_ = hold_position;
-        target_orientation_.setRPY(0.0,0.0,heading_rad);
 
-        
+        target_orientation_.setRPY(0.0,0.0,control_command_.heading);
     }
 
     void update(){
-        float diff_x = target_states_.x-current_states_.x;
-        float diff_y = target_states_.y-current_states_.y;
+        float diff_x = control_command_.x-current_states_.x;
+        float diff_y = control_command_.y-current_states_.y;
 
         float distance = std::hypot(diff_x,diff_y);
 
         float velocity;
         float follow_velocity = max_velocity_;
 
-        if(hold_position_ && distance <= braking_radius_){
+        if(control_command_.brake && distance <= braking_radius_){
             velocity = distance/braking_radius_ * follow_velocity;
         } else {
             velocity = follow_velocity;
         }
 
-        target_states_.heading = std::atan2(diff_y,diff_x);
+        control_command_.heading = std::atan2(diff_y,diff_x);
 
-
-        float vx = diff_x/(distance + eplison) * velocity; 
+        float vx = diff_x/(distance + eplison) * velocity;
         float vy = diff_y/(distance + eplison) * velocity;
 
-        float error = angle_wrap(target_states_.heading-current_states_.heading);
-        
-        
-        float angular_velocity =  pid_heading_->update(error);
-        PID_OUT_TEMP = angular_velocity; //tf2::angleShortestPath(get_current_orientation(),target_orientation_)
+        float error = angle_wrap(control_command_.heading-current_states_.heading);
 
+        float angular_velocity =  pid_heading_->update(error);
         set_velocity_cmd(vx,vy,angular_velocity);
     }
 
-    geometry_msgs::msg::TwistStamped  get_velocity_cmd(){
+    geometry_msgs::msg::TwistStamped get_velocity_cmd(){
         geometry_msgs::msg::TwistStamped vel_cmd;
         //NED TO ENU
         vel_cmd.twist.linear.y = target_states_.vx;
@@ -97,22 +91,23 @@ class USV{
     double angle_wrap(double radians) {
         while (radians > M_PI)  { radians -= 2 * M_PI; }
         while (radians < -M_PI) { radians += 2 * M_PI; }
-        
+
         return radians;
     }
-    
+
     float map(float x, float in_min, float in_max, float out_min, float out_max){
         return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
+    }
+
+    std::shared_ptr<PID> pid_heading(){
+        return pid_heading_;
     }
 
     States get_states(){
         return current_states_;
     }
-    States get_target_states(){
-        return target_states_;
-    }
-    float get_pid_output(){
-        return PID_OUT_TEMP;
+    ControlCmd get_target_states() const {
+        return control_command_;
     }
 
     double get_position_x(){
@@ -146,19 +141,15 @@ class USV{
 
         States current_states_;
         States target_states_;
-        bool hold_position_;
-        float PID_OUT_TEMP;
+        ControlCmd control_command_;
         tf2::Quaternion current_orientation_;
         tf2::Quaternion target_orientation_;
 
-        float eplison = 0.001;
-        
         float angular_velocity_z_;
         float max_velocity_;
         float braking_radius_;
 
-        std::unique_ptr<PID> pid_heading_;
-        
+        std::shared_ptr<PID> pid_heading_;
 
-
+        static constexpr float eplison = 0.001f;
 };

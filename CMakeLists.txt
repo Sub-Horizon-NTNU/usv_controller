@@ -15,15 +15,18 @@ find_package(sensor_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
+find_package(waypoint_msgs REQUIRED)
 
 add_executable(usv_controller src/main.cpp
 src/Controller.cpp
 src/PID.cpp
 src/USV.cpp
+src/Waypoint.cpp
+src/PathScheduler.cpp
 )
 target_include_directories(usv_controller PRIVATE ${CMAKE_SOURCE_DIR}/include)
 
-ament_target_dependencies(usv_controller 
+ament_target_dependencies(usv_controller
   rclcpp
   mavros
   mavros_msgs
@@ -31,6 +34,7 @@ ament_target_dependencies(usv_controller
   geometry_msgs
   tf2_geometry_msgs
   tf2
+  waypoint_msgs
 )
 
 install(TARGETS usv_controller
