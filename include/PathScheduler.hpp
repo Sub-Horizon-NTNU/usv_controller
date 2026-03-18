@@ -3,7 +3,7 @@
 #include "Structures.hpp"
 #include <cmath>
 #include <chrono>
-
+#include <rclcpp/rclcpp.hpp>
 /*
  * General flow that this class manages is to:
  *
@@ -17,8 +17,15 @@
 
 class PathScheduler {
     public:
-    PathScheduler(){
+    PathScheduler(rclcpp::Node::SharedPtr node): node_(node){
+        
+        waypoint_hold_subscriber_ = node_->create_subscription<waypoint_msgs::msg::WaypointHold>(
+            "/selene/waypoint/hold",
+            10, [this](const waypoint_msgs::msg::WaypointHold wp_hold){ add_to_path(wp_hold); });
 
+        waypoint_pass_subscriber_ = node_->create_subscription<waypoint_msgs::msg::WaypointPass>(
+            "/selene/waypoint/pass",
+            10, [this](const waypoint_msgs::msg::WaypointPass wp_pass){ add_to_path(wp_pass); });
     }
     void add_to_path(const WaypointData &waypoint){
         waypoints_.push_back(Waypoint{waypoint});
@@ -86,6 +93,7 @@ private:
     bool waypoint_reached() {
         return waypoint_reached_ && !prev_waypoint_reached_;
     }
+    
     void handle_none_waypoint(){
         ControlCmd cmd;
         cmd.x = last_position_x_;
@@ -140,7 +148,6 @@ private:
         control_cmd.heading_on_path = true;
         control_cmd.hold_position = true;
         update_control_cmd(control_cmd);
-        
 
         return wp_check && wp_check_hold;
     }
@@ -155,7 +162,6 @@ private:
         last_position_x_ = cmd.x;
         last_position_y_ = cmd.y;
         
-        
         return wp_check;
     }
 
@@ -163,7 +169,8 @@ private:
     void update_control_cmd(const ControlCmd cmd){
         control_cmd_ = cmd;
     }
-
+    
+    rclcpp::Node::SharedPtr node_;
     float position_x_{};
     float position_y_{};
     
@@ -177,5 +184,8 @@ private:
     std::vector<Waypoint> waypoints_;
     std::vector<Waypoint> null_waypoints_;
     std::chrono::steady_clock::time_point current_waypoint_time_start;
+    
+    rclcpp::Subscription<waypoint_msgs::msg::WaypointHold>::SharedPtr waypoint_hold_subscriber_;
+    rclcpp::Subscription<waypoint_msgs::msg::WaypointPass>::SharedPtr waypoint_pass_subscriber_;
 
 };

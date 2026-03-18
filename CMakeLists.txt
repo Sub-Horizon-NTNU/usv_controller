@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.8)
 project(usv_controller)
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-  add_compile_options(-Wall -Wextra -Wpedantic)
+    add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -18,9 +18,11 @@ find_package(tf2_geometry_msgs REQUIRED)
 find_package(waypoint_msgs REQUIRED)
 
 add_executable(usv_controller src/main.cpp
-src/Controller.cpp
-src/PID.cpp
-src/USV.cpp
+src/USVNode.cpp
+src/usv/PID.cpp
+src/usv/USV.cpp
+src/usv/PositionController.cpp
+src/usv/USVStates.cpp
 src/Waypoint.cpp
 src/PathScheduler.cpp
 )

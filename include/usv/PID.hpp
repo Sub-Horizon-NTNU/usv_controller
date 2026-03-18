@@ -5,8 +5,8 @@
 
 class PID{
     public:
-    PID(const double &kp,const double &ki,const double &kd, const double &max_output) 
-    : prev_time_(std::chrono::steady_clock::now()), kp_(kp), ki_(ki), kd_(kd), prev_error_(0), max_output_(max_output), i_(0.0)
+    PID() 
+    : prev_time_(std::chrono::steady_clock::now()), prev_error_(0), i_(0.0)
     {}
 
     double update(const double &error){
@@ -50,6 +50,9 @@ class PID{
     }
     void set_kd(const float &kd){
         kd_ = kd;
+    }
+    void set_max_output(const float &max_output){
+        max_output_ = max_output;
     }
     
     private:
