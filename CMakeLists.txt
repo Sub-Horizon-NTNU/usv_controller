@@ -26,6 +26,7 @@ src/usv/USVStates.cpp
 src/Waypoint.cpp
 src/PathScheduler.cpp
 )
+
 target_include_directories(usv_controller PRIVATE ${CMAKE_SOURCE_DIR}/include)
 
 ament_target_dependencies(usv_controller
@@ -54,6 +55,7 @@ install(DIRECTORY launch
 install(DIRECTORY include/
   DESTINATION share/${PROJECT_NAME}
 )
+
 
 
 ament_package()

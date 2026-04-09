@@ -9,13 +9,10 @@
 class USVNode : public rclcpp::Node
 {
 public:
-    Controller() : Node("usv_controller")
-    {}
+    USVNode();
     
-    void init(){
-        this->usv_ = std::make_unique<USV>(this->shared_from_this());
-
-    }
+    void init();
+    
 
 private:
     std::unique_ptr<USV> usv_;
