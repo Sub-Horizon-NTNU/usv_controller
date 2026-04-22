@@ -4,13 +4,6 @@ from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
 def generate_launch_description():
-    yaw_kp = LaunchConfiguration("yaw_kp")
-    yaw_ki = LaunchConfiguration("yaw_ki")
-    yaw_kd = LaunchConfiguration("yaw_kd")
-    
-    lin_kp = LaunchConfiguration("lin_kp")
-    lin_ki = LaunchConfiguration("lin_ki")
-    lin_kd = LaunchConfiguration("lin_kd")
     
     max_linear_velocity = LaunchConfiguration("max_linear_velocity")
     max_angular_velocity = LaunchConfiguration("max_angular_velocity")
@@ -26,7 +19,7 @@ def generate_launch_description():
     
     max_linear_velocity_arg = DeclareLaunchArgument("max_linear_velocity", default_value="5.0",description="Maximum linear velocity [m/s]")
     max_angular_velocity_arg = DeclareLaunchArgument("max_angular_velocity",default_value="2.0",description="Maximum angular velocity [rad/s]")
-    braking_radius_arg = DeclareLaunchArgument("braking_radius", default_value="3.0", description="Distance away from position hold waypoint to start braking [m/s]")
+    braking_radius_arg = DeclareLaunchArgument("braking_radius", default_value="3.0", description="Distance away from position hold waypoint to start braking [m]")
 
     return LaunchDescription([
         yaw_kp_arg,
@@ -44,15 +37,14 @@ def generate_launch_description():
             name="usv_controller",
             output="screen",
             parameters= [
-                {"yaw_kp": yaw_kp},
-                {"yaw_ki": yaw_ki},
-                {"yaw_kd": yaw_kd},
-                {"lin_kp": lin_kp},
-                {"lin_ki": lin_ki},
-                {"lin_kd": lin_kd},
+                {"yaw_kp": LaunchConfiguration("yaw_kp")},
+                {"yaw_ki": LaunchConfiguration("yaw_ki")},
+                {"yaw_kd": LaunchConfiguration("yaw_kd")},
+                {"lin_kp": LaunchConfiguration("lin_kp")},
+                {"lin_ki": LaunchConfiguration("lin_ki")},
+                {"lin_kd": LaunchConfiguration("lin_kd")},
                 {"max_linear_velocity": max_linear_velocity},
                 {"max_angular_velocity": max_angular_velocity},
                 {"braking_radius": braking_radius}
             ])
-
     ])

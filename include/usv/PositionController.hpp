@@ -10,6 +10,7 @@
 #include "usv/PID.hpp"
 #include <rclcpp/timer.hpp>
 #include <iostream>
+#include <mavros_msgs/msg/position_target.hpp>
 class PositionController{
     public:
 
@@ -19,12 +20,16 @@ class PositionController{
 
         geometry_msgs::msg::TwistStamped get_velocity_cmd() const;
 
+        double get_distance();
+
     private:
         double angle_wrap(double radians);
 
         void set_velocity_cmd(const float &vx, const float &vy, const float &vz);
 
         void init_parameters();
+
+        void send_position_cmd(const float &x, const float &y, const float &heading);
 
     rclcpp::Node::SharedPtr node_;
     std::shared_ptr<PID> pid_x_;
@@ -38,6 +43,7 @@ class PositionController{
     geometry_msgs::msg::TwistStamped vel_cmd_;
     rclcpp::TimerBase::SharedPtr publish_velocity_timer_;
     rclcpp::Publisher<geometry_msgs::msg::TwistStamped>::SharedPtr velocity_publisher_;
+    rclcpp::Publisher<mavros_msgs::msg::PositionTarget>::SharedPtr position_publisher_;
 
     static constexpr float epsilon = 0.001f;
     //parameters

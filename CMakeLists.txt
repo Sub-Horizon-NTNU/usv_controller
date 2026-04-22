@@ -23,7 +23,6 @@ src/usv/PID.cpp
 src/usv/USV.cpp
 src/usv/PositionController.cpp
 src/usv/USVStates.cpp
-src/Waypoint.cpp
 src/PathScheduler.cpp
 )
 

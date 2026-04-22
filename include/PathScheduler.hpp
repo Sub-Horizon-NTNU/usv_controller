@@ -1,9 +1,14 @@
 #pragma once
-#include "Waypoint.hpp"
+#include "waypoint_msgs/msg/waypoint.hpp"
+#include "waypoint_msgs/msg/waypoints.hpp"
+#include <std_msgs/msg/bool.hpp>
 #include "Structures.hpp"
 #include <cmath>
 #include <chrono>
 #include <rclcpp/rclcpp.hpp>
+#include <rclcpp/timer.hpp>
+#include <optional>
+
 
 /*
  * General flow that this class manages is to:
@@ -19,15 +24,18 @@
 class PathScheduler {
     public:
     PathScheduler(rclcpp::Node::SharedPtr node);
-    void add_to_path(const WaypointData &waypoint);
+    void add_to_path(const waypoint_msgs::msg::Waypoint &waypoint);
 
-    void add_to_path(const std::vector<WaypointData> &waypoint_types);
+    void add_list_to_path(const waypoint_msgs::msg::Waypoints &waypoints);
     //Message containing target position and control mode(s)
     ControlCmd get_control_cmd() const;
 
     void clear_path();
 
     void update(const float &current_x, const float &current_y);
+
+    std::optional<waypoint_msgs::msg::Waypoint> get_current_waypoint();
+
 private:
     void update_path();
 
@@ -39,12 +47,14 @@ private:
 
     void move_to_next_waypoint();
 
-    bool handle_waypoint_hold(const waypoint_msgs::msg::WaypointHold &wp_hold);
+    bool handle_waypoint_hold(const waypoint_msgs::msg::Waypoint &wp_hold);
 
-    bool handle_waypoint_pass(const waypoint_msgs::msg::WaypointPass wp_pass);
+    bool handle_waypoint_pass(const waypoint_msgs::msg::Waypoint &wp_pass);
 
     //Must be updated by overwriting the existing control command variable ("control_cmd_").
     void update_control_cmd(const ControlCmd cmd);
+
+    void publish_waypoint_status();
 
     rclcpp::Node::SharedPtr node_;
     float position_x_{};
@@ -57,11 +67,13 @@ private:
     bool prev_waypoint_reached_{};
     ControlCmd control_cmd_{};
     unsigned int waypoint_index_{};
-    std::vector<Waypoint> waypoints_;
-    std::vector<Waypoint> null_waypoints_;
+    std::vector<waypoint_msgs::msg::Waypoint> waypoints_;
     std::chrono::steady_clock::time_point current_waypoint_time_start;
 
-    rclcpp::Subscription<waypoint_msgs::msg::WaypointHold>::SharedPtr waypoint_hold_subscriber_;
-    rclcpp::Subscription<waypoint_msgs::msg::WaypointPass>::SharedPtr waypoint_pass_subscriber_;
+    rclcpp::Subscription<waypoint_msgs::msg::Waypoint>::SharedPtr waypoint_subscriber_;
+    rclcpp::Subscription<waypoint_msgs::msg::Waypoints>::SharedPtr waypoint_list_subscriber_;
+    rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr clear_waypoints_subscriber_;
 
+    rclcpp::Publisher<waypoint_msgs::msg::Waypoint>::SharedPtr waypoint_status_publisher_;
+    rclcpp::TimerBase::SharedPtr waypoint_status_publisher_timer_;
 };
