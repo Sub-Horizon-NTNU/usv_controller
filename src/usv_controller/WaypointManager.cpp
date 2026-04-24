@@ -1,6 +1,6 @@
-#include "PathScheduler.hpp"
+#include "usv_controller/WaypointManager.hpp"
 
-    PathScheduler::PathScheduler(rclcpp::Node::SharedPtr node): node_(node){
+    WaypointManager::WaypointManager(rclcpp::Node::SharedPtr node): node_(node){
         waypoint_subscriber_ = node_->create_subscription<waypoint_msgs::msg::Waypoint>(
             "selene/controller/waypoint",
             10, 
@@ -16,29 +16,29 @@
             10, 
             [this](const std_msgs::msg::Bool){ clear_path(); });
     }
-       
-    void PathScheduler::add_to_path(const waypoint_msgs::msg::Waypoint &waypoint){
+    
+    void WaypointManager::add_to_path(const waypoint_msgs::msg::Waypoint &waypoint){
         //TODO: add logic to check wp first before adding it
         waypoints_.push_back(waypoint);
     }
 
-    void PathScheduler::add_list_to_path(const waypoint_msgs::msg::Waypoints &waypoints){
+    void WaypointManager::add_list_to_path(const waypoint_msgs::msg::Waypoints &waypoints){
         for(const waypoint_msgs::msg::Waypoint &waypoint : waypoints.waypoints){
             waypoints_.push_back(waypoint);
         }
     }
     //Message containing target position and control mode(s)
-    ControlCmd PathScheduler::get_control_cmd() const {
+    ControlCmd WaypointManager::get_control_cmd() const {
         return control_cmd_;
     }
 
-    void PathScheduler::clear_path(){
+    void WaypointManager::clear_path(){
         waypoints_.clear();
         waypoints_.shrink_to_fit();
         waypoint_index_ = 0;
     }
 
-    void PathScheduler::update(const float &current_x, const float &current_y){
+    void WaypointManager::update(const float &current_x, const float &current_y){
         bool updated_position{};
         if( (position_x_ != current_x) || (position_y_!= current_y ) ){
             updated_position = true;
@@ -52,19 +52,15 @@
         }
     }
 
-    std::optional<waypoint_msgs::msg::Waypoint> PathScheduler::get_current_waypoint(){
-        if(waypoints_.size()>0){
-            return waypoints_[waypoint_index_];
-        }
-        return std::nullopt;
+    waypoint_msgs::msg::Waypoint WaypointManager::get_current_waypoint(){
+       return most_recent_waypoint_;
     }
 
-    void PathScheduler::update_path(){
+    void WaypointManager::update_path(){
         if(waypoints_.empty()){
             handle_none_waypoint();
             return;
         }
-
         waypoint_msgs::msg::Waypoint &target_wp = waypoints_[waypoint_index_];
 
         int waypoint_type = target_wp.type;
@@ -81,16 +77,17 @@
             default:
                 break;
         }
+
         if(waypoint_ok){
             move_to_next_waypoint();
         }
     }
 
-    bool PathScheduler::waypoint_reached() {
+    bool WaypointManager::waypoint_reached() {
         return waypoint_reached_ && !prev_waypoint_reached_;
     }
 
-    void PathScheduler::handle_none_waypoint(){
+    void WaypointManager::handle_none_waypoint(){
         ControlCmd cmd;
         cmd.x = last_position_x_;
         cmd.y = last_position_y_;
@@ -99,7 +96,7 @@
         update_control_cmd(cmd);
     }
 
-    bool PathScheduler::handle_waypoint(const waypoint_msgs::msg::Waypoint &wp){
+    bool WaypointManager::handle_waypoint(const waypoint_msgs::msg::Waypoint &wp){
         float distance = std::hypot(wp.x-position_x_,wp.y-position_y_);
         if(distance <= wp.radius){
             prev_waypoint_reached_ = waypoint_reached_;
@@ -109,8 +106,9 @@
         return false;
     }
 
-    void PathScheduler::move_to_next_waypoint(){
+    void WaypointManager::move_to_next_waypoint(){
         waypoint_index_+=1;
+        most_recent_waypoint_ = waypoints_[waypoint_index_];
         // clear if all waypoints are completed
         if(waypoint_index_ >= waypoints_.size()){
             clear_path();
@@ -119,12 +117,10 @@
         prev_waypoint_reached_ = false;
     }
 
-    bool PathScheduler::handle_waypoint_hold(const waypoint_msgs::msg::Waypoint &wp_hold){
+    bool WaypointManager::handle_waypoint_hold(const waypoint_msgs::msg::Waypoint &wp_hold){
         //Check general waypoint conditions
         bool wp_check = handle_waypoint(wp_hold);
-        if(!wp_check){
-            return false;
-        }
+
         bool wp_check_hold{};
        
         //start the clock if the usv has arrived at the wp
@@ -149,22 +145,23 @@
         return wp_check && wp_check_hold;
     }
 
-    bool PathScheduler::handle_waypoint_pass(const waypoint_msgs::msg::Waypoint &wp_pass){
+    bool WaypointManager::handle_waypoint_pass(const waypoint_msgs::msg::Waypoint &wp_pass){
         bool wp_check = handle_waypoint(wp_pass);
+
         ControlCmd cmd;
         cmd.x = wp_pass.x;
         cmd.y = wp_pass.y;
-        if(wp_pass.keep_on_track){
-            cmd.heading_on_path = true;
-        }
+        cmd.heading_on_path = wp_pass.keep_on_track;
+        
         update_control_cmd(cmd);
+        
         last_position_x_ = cmd.x;
         last_position_y_ = cmd.y;
 
         return wp_check;
     }
     //Must be updated by overwriting the existing control command variable.
-    void PathScheduler::update_control_cmd(const ControlCmd cmd){
+    void WaypointManager::update_control_cmd(const ControlCmd cmd){
         control_cmd_ = cmd;
     }
 

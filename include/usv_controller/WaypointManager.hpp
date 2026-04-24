@@ -21,9 +21,9 @@
  *
  */
 
-class PathScheduler {
+class WaypointManager {
     public:
-    PathScheduler(rclcpp::Node::SharedPtr node);
+    WaypointManager(rclcpp::Node::SharedPtr node);
     void add_to_path(const waypoint_msgs::msg::Waypoint &waypoint);
 
     void add_list_to_path(const waypoint_msgs::msg::Waypoints &waypoints);
@@ -34,7 +34,7 @@ class PathScheduler {
 
     void update(const float &current_x, const float &current_y);
 
-    std::optional<waypoint_msgs::msg::Waypoint> get_current_waypoint();
+    waypoint_msgs::msg::Waypoint get_current_waypoint();
 
 private:
     void update_path();
@@ -68,6 +68,7 @@ private:
     ControlCmd control_cmd_{};
     unsigned int waypoint_index_{};
     std::vector<waypoint_msgs::msg::Waypoint> waypoints_;
+    waypoint_msgs::msg::Waypoint most_recent_waypoint_;
     std::chrono::steady_clock::time_point current_waypoint_time_start;
 
     rclcpp::Subscription<waypoint_msgs::msg::Waypoint>::SharedPtr waypoint_subscriber_;

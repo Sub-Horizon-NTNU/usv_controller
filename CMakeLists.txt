@@ -19,11 +19,11 @@ find_package(waypoint_msgs REQUIRED)
 
 add_executable(usv_controller src/main.cpp
 src/USVNode.cpp
-src/usv/PID.cpp
-src/usv/USV.cpp
-src/usv/PositionController.cpp
-src/usv/USVStates.cpp
-src/PathScheduler.cpp
+src/USV.cpp
+src/usv_controller/PID.cpp
+src/usv_controller/PositionController.cpp
+src/usv_controller/USVStates.cpp
+src/usv_controller/WaypointManager.cpp
 )
 
 target_include_directories(usv_controller PRIVATE ${CMAKE_SOURCE_DIR}/include)

@@ -7,7 +7,7 @@
 #include <rclcpp/parameter_event_handler.hpp>
 #include <rclcpp/publisher.hpp>
 #include <rclcpp/rclcpp.hpp>
-#include "usv/PID.hpp"
+#include "usv_controller/PID.hpp"
 #include <rclcpp/timer.hpp>
 #include <iostream>
 #include <mavros_msgs/msg/position_target.hpp>
@@ -22,23 +22,27 @@ class PositionController{
 
         double get_distance();
 
+        void update_control_cmd(const ControlCmd &new_control_cmd);
+
     private:
         double angle_wrap(double radians);
 
-        void set_velocity_cmd(const float &vx, const float &vy, const float &vz);
+        void send_velocity_cmd(const float &vx, const float &vy, const float &vz);
 
         void init_parameters();
 
-        void send_position_cmd(const float &x, const float &y, const float &heading);
 
     rclcpp::Node::SharedPtr node_;
     std::shared_ptr<PID> pid_x_;
     std::shared_ptr<PID> pid_y_;
     std::shared_ptr<PID> pid_heading_;
+    ControlCmd prev_control_cmd_;
+    ControlCmd last_control_cmd;
 
     float braking_radius_;
     float max_velocity_;
     float heading_;
+
 
     geometry_msgs::msg::TwistStamped vel_cmd_;
     rclcpp::TimerBase::SharedPtr publish_velocity_timer_;

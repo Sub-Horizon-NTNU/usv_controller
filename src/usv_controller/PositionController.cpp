@@ -1,12 +1,16 @@
-#include "usv/PositionController.hpp"
+#include "usv_controller/PositionController.hpp"
 
 
     PositionController::PositionController(rclcpp::Node::SharedPtr node): node_(node){
         init_parameters();
         velocity_publisher_ = node_->create_publisher<geometry_msgs::msg::TwistStamped>("mavros/setpoint_velocity/cmd_vel", 10);
-        position_publisher_ = node_->create_publisher<mavros_msgs::msg::PositionTarget>("mavros/setpoint_raw/local", 10);
     }
         void PositionController::update(const States &current_states, const ControlCmd &control_commands){
+            if(control_commands.x != last_control_cmd.x || control_commands.y != last_control_cmd.y){
+                last_control_cmd = prev_control_cmd_;
+                prev_control_cmd_ = control_commands;
+            }
+
             float diff_x = control_commands.x-current_states.x;
             float diff_y = control_commands.y-current_states.y;
 
@@ -17,8 +21,9 @@
             float heading_error;
 
             float distance = std::hypot(diff_x,diff_y);
+
             // x & y
-            if(true && (distance <= braking_radius_) ){
+            if(control_commands.hold_position && (distance <= braking_radius_) ){
                 // Brake 
                 vx = pid_x_->update(diff_x);
                 vy = pid_y_->update(diff_y);
@@ -29,10 +34,10 @@
                 vx = diff_x/(distance + epsilon) * velocity;
                 vy = diff_y/(distance + epsilon) * velocity;
             }
-            
             // heading
             if(control_commands.heading_on_path){
                 heading_ = std::atan2(diff_y,diff_x);
+                //TODO: improve heading
                 heading_error = angle_wrap(heading_-current_states.heading);
             } 
             else {
@@ -40,35 +45,11 @@
             }
             float angular_velocity =  pid_heading_->update(heading_error);
             
-
             //send cmd
-            set_velocity_cmd(vx,vy,angular_velocity);
-            //RCLCPP_INFO(node_->get_logger(),"Velocity %.2f",angular_velocity);
-            velocity_publisher_->publish(get_velocity_cmd());
-        }
+            send_velocity_cmd(vx,vy,angular_velocity);
 
-        void PositionController::send_position_cmd(const float &x, const float &y, const float &heading){
-            if(false){
-                using pt = mavros_msgs::msg::PositionTarget;
-                pt position_target;
-                //NED TO ENU
-                position_target.header.stamp = node_->now();
-                position_target.header.frame_id = "map";
-                position_target.yaw = heading;
-                position_target.position.x = x;
-                position_target.position.y = y;
-                position_target.coordinate_frame = pt::FRAME_LOCAL_NED;
-                position_target.type_mask =  
-                    pt::IGNORE_AFZ |
-                    pt::IGNORE_AFX |
-                    pt::IGNORE_AFY |
-                    pt::IGNORE_VX |
-                    pt::IGNORE_VY |
-                    pt::IGNORE_VZ |
-                    pt::IGNORE_PZ;
-                position_publisher_->publish(position_target);
-                return;
-            }
+            //RCLCPP_INFO(node_->get_logger(),"Velocity %.2f",angular_velocity);
+            prev_control_cmd_ = control_commands;
         }
 
         geometry_msgs::msg::TwistStamped PositionController::get_velocity_cmd() const{
@@ -81,13 +62,14 @@
 
             return radians;
         }
-        void PositionController::set_velocity_cmd(const float &vx, const float &vy, const float &vz){
+        void PositionController::send_velocity_cmd(const float &vx, const float &vy, const float &vz){
             vel_cmd_.header.stamp =  node_->now();
             vel_cmd_.header.frame_id = "map"; // World reference frame
             // NED to ENU
             vel_cmd_.twist.linear.x = vy;
             vel_cmd_.twist.linear.y = vx;
             vel_cmd_.twist.angular.z = -vz;
+            velocity_publisher_->publish(vel_cmd_);
         }
 
         void PositionController::init_parameters(){

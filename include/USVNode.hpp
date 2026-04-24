@@ -4,7 +4,7 @@
 #include <memory>
 #include <rclcpp/rclcpp.hpp>
 
-#include "usv/USV.hpp"
+#include "USV.hpp"
 
 class USVNode : public rclcpp::Node
 {
