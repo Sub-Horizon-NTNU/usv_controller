@@ -1,4 +1,5 @@
 #include "usv_controller/WaypointManager.hpp"
+#include <waypoint_msgs/msg/detail/waypoint_status__struct.hpp>
 
     WaypointManager::WaypointManager(rclcpp::Node::SharedPtr node): node_(node){
         waypoint_subscriber_ = node_->create_subscription<waypoint_msgs::msg::Waypoint>(
@@ -18,18 +19,29 @@
     }
     
     void WaypointManager::add_to_path(const waypoint_msgs::msg::Waypoint &waypoint){
-        //TODO: add logic to check wp first before adding it
+        hold_position_ = false;
+        if(waypoints_.empty()){
+            previous_waypoint_.x = position_x_;
+            previous_waypoint_.y = position_y_;
+            previous_waypoint_.heading = heading_;
+            most_recent_waypoint_ = waypoint; 
+        }
         waypoints_.push_back(waypoint);
     }
 
     void WaypointManager::add_list_to_path(const waypoint_msgs::msg::Waypoints &waypoints){
+        hold_position_ = false;
+        RCLCPP_INFO(node_->get_logger(), "Received %zu waypoints", waypoints.waypoints.size());
+
+        if(waypoints_.empty()){
+            previous_waypoint_.x = position_x_;
+            previous_waypoint_.y = position_y_;
+            previous_waypoint_.heading = heading_;
+            most_recent_waypoint_ = waypoints.waypoints[0]; 
+        }
         for(const waypoint_msgs::msg::Waypoint &waypoint : waypoints.waypoints){
             waypoints_.push_back(waypoint);
         }
-    }
-    //Message containing target position and control mode(s)
-    ControlCmd WaypointManager::get_control_cmd() const {
-        return control_cmd_;
     }
 
     void WaypointManager::clear_path(){
@@ -38,7 +50,7 @@
         waypoint_index_ = 0;
     }
 
-    void WaypointManager::update(const float &current_x, const float &current_y){
+    void WaypointManager::update(const float &current_x, const float &current_y, const float &heading){
         bool updated_position{};
         if( (position_x_ != current_x) || (position_y_!= current_y ) ){
             updated_position = true;
@@ -46,6 +58,7 @@
         //Update current position
         position_x_ = current_x;
         position_y_ = current_y;
+        heading_ = heading;
 
         if(updated_position){
             update_path();
@@ -56,11 +69,16 @@
        return most_recent_waypoint_;
     }
 
+    waypoint_msgs::msg::Waypoint WaypointManager::get_previous_waypoint(){
+       return previous_waypoint_;
+    }
+
     void WaypointManager::update_path(){
         if(waypoints_.empty()){
             handle_none_waypoint();
             return;
         }
+
         waypoint_msgs::msg::Waypoint &target_wp = waypoints_[waypoint_index_];
 
         int waypoint_type = target_wp.type;
@@ -88,12 +106,16 @@
     }
 
     void WaypointManager::handle_none_waypoint(){
-        ControlCmd cmd;
-        cmd.x = last_position_x_;
-        cmd.y = last_position_y_;
-        cmd.hold_position = true;
-        cmd.brake = true;
-        update_control_cmd(cmd);
+        if(!hold_position_){
+            most_recent_waypoint_.hold = true;
+            most_recent_waypoint_.x = position_x_;
+            most_recent_waypoint_.y = position_y_;
+            most_recent_waypoint_.heading = heading_;
+            most_recent_waypoint_.radius = 0.1;
+            most_recent_waypoint_.keep_on_track = false;
+            previous_waypoint_ = most_recent_waypoint_;
+            hold_position_=true;
+        }
     }
 
     bool WaypointManager::handle_waypoint(const waypoint_msgs::msg::Waypoint &wp){
@@ -107,12 +129,15 @@
     }
 
     void WaypointManager::move_to_next_waypoint(){
+        previous_waypoint_ = waypoints_[waypoint_index_];
         waypoint_index_+=1;
-        most_recent_waypoint_ = waypoints_[waypoint_index_];
         // clear if all waypoints are completed
         if(waypoint_index_ >= waypoints_.size()){
             clear_path();
+            return;
         }
+
+        most_recent_waypoint_ = waypoints_[waypoint_index_];
         waypoint_reached_ = false;
         prev_waypoint_reached_ = false;
     }
@@ -121,48 +146,37 @@
         //Check general waypoint conditions
         bool wp_check = handle_waypoint(wp_hold);
 
-        bool wp_check_hold{};
-       
         //start the clock if the usv has arrived at the wp
-        if(waypoint_reached()){
+        if(wp_check && !hold_timer_started_){
             current_waypoint_time_start = std::chrono::steady_clock::time_point::clock::now();
+            hold_timer_started_ = true;
         }
         //Check how long waypoint has been held
-        float hold_time_passed = std::chrono::duration<float>(std::chrono::steady_clock::time_point::clock::now()-current_waypoint_time_start).count();
-        if( (hold_time_passed >= wp_hold.time_to_hold)){
-            wp_check_hold = true;
+        if(hold_timer_started_){
+            float hold_time_passed = std::chrono::duration<float>(std::chrono::steady_clock::time_point::clock::now()-current_waypoint_time_start).count();
+            if( (hold_time_passed >= wp_hold.time_to_hold)){
+                hold_timer_started_ = false;
+                return true;
+            }
         }
-
-        //update control cmd with regards to the waypoint type;
-        ControlCmd control_cmd;
-        control_cmd.x = wp_hold.x;
-        control_cmd.y = wp_hold.y;
-        control_cmd.heading_on_path = wp_hold.keep_on_track;
-        control_cmd.hold_position = wp_hold.hold;
-        
-        update_control_cmd(control_cmd);
-
-        return wp_check && wp_check_hold;
+        return false;
     }
 
     bool WaypointManager::handle_waypoint_pass(const waypoint_msgs::msg::Waypoint &wp_pass){
         bool wp_check = handle_waypoint(wp_pass);
 
-        ControlCmd cmd;
-        cmd.x = wp_pass.x;
-        cmd.y = wp_pass.y;
-        cmd.heading_on_path = wp_pass.keep_on_track;
-        
-        update_control_cmd(cmd);
-        
-        last_position_x_ = cmd.x;
-        last_position_y_ = cmd.y;
-
         return wp_check;
     }
-    //Must be updated by overwriting the existing control command variable.
-    void WaypointManager::update_control_cmd(const ControlCmd cmd){
-        control_cmd_ = cmd;
+
+    waypoint_msgs::msg::WaypointStatus WaypointManager::get_waypoint_status() {
+        waypoint_msgs::msg::WaypointStatus wp_status;
+        wp_status.target_waypoint = get_current_waypoint();
+        wp_status.distance_x = position_x_- get_current_waypoint().x;
+        wp_status.distance_y = position_y_- get_current_waypoint().y;
+        wp_status.distance = std::hypot(wp_status.distance_x,wp_status.distance_y);
+        return wp_status;
+
     }
+ 
 
  

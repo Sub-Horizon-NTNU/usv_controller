@@ -1,6 +1,7 @@
 #pragma once
 #include "waypoint_msgs/msg/waypoint.hpp"
 #include "waypoint_msgs/msg/waypoints.hpp"
+#include <waypoint_msgs/msg/waypoint_status.hpp>
 #include <std_msgs/msg/bool.hpp>
 #include "Structures.hpp"
 #include <cmath>
@@ -13,8 +14,7 @@
 /*
  * General flow that this class manages is to:
  *
- * 1. receive waypoints from multiple subscribers
- * callbacks (one for each waypoint type)
+ * 1. receive waypoints from subscribers
  * 2. add waypoint to list of waypoints_
  * 3. Go throught the waypoints_ and update the control_cmd_ based on the current waypoint
  *  each waypoint has its own handling function which changs the control cmd based on the waypoint type
@@ -24,19 +24,25 @@
 class WaypointManager {
     public:
     WaypointManager(rclcpp::Node::SharedPtr node);
-    void add_to_path(const waypoint_msgs::msg::Waypoint &waypoint);
-
-    void add_list_to_path(const waypoint_msgs::msg::Waypoints &waypoints);
+    
     //Message containing target position and control mode(s)
-    ControlCmd get_control_cmd() const;
-
-    void clear_path();
-
-    void update(const float &current_x, const float &current_y);
-
+    
+    
+    void update(const float &current_x, const float &current_y, const float &heading);
+    
     waypoint_msgs::msg::Waypoint get_current_waypoint();
-
-private:
+    
+    waypoint_msgs::msg::Waypoint get_previous_waypoint();
+    
+    waypoint_msgs::msg::WaypointStatus  get_waypoint_status();
+    private:
+    
+    void add_to_path(const waypoint_msgs::msg::Waypoint &waypoint);
+    
+    void add_list_to_path(const waypoint_msgs::msg::Waypoints &waypoints);
+    
+    void clear_path();
+    
     void update_path();
 
     bool waypoint_reached();
@@ -51,25 +57,22 @@ private:
 
     bool handle_waypoint_pass(const waypoint_msgs::msg::Waypoint &wp_pass);
 
-    //Must be updated by overwriting the existing control command variable ("control_cmd_").
-    void update_control_cmd(const ControlCmd cmd);
-
     void publish_waypoint_status();
 
     rclcpp::Node::SharedPtr node_;
     float position_x_{};
     float position_y_{};
-
-    float last_position_x_{};
-    float last_position_y_{};
-
+    float heading_{};
     bool waypoint_reached_{};
     bool prev_waypoint_reached_{};
     ControlCmd control_cmd_{};
     unsigned int waypoint_index_{};
     std::vector<waypoint_msgs::msg::Waypoint> waypoints_;
+    waypoint_msgs::msg::Waypoint previous_waypoint_;
     waypoint_msgs::msg::Waypoint most_recent_waypoint_;
     std::chrono::steady_clock::time_point current_waypoint_time_start;
+    bool hold_timer_started_{};
+    bool hold_position_{};
 
     rclcpp::Subscription<waypoint_msgs::msg::Waypoint>::SharedPtr waypoint_subscriber_;
     rclcpp::Subscription<waypoint_msgs::msg::Waypoints>::SharedPtr waypoint_list_subscriber_;

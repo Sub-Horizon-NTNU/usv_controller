@@ -5,55 +5,59 @@
         init_parameters();
         velocity_publisher_ = node_->create_publisher<geometry_msgs::msg::TwistStamped>("mavros/setpoint_velocity/cmd_vel", 10);
     }
-        void PositionController::update(const States &current_states, const ControlCmd &control_commands){
-            if(control_commands.x != last_control_cmd.x || control_commands.y != last_control_cmd.y){
-                last_control_cmd = prev_control_cmd_;
-                prev_control_cmd_ = control_commands;
-            }
-
-            float diff_x = control_commands.x-current_states.x;
-            float diff_y = control_commands.y-current_states.y;
-
-            float velocity;
-            float vx;
-            float vy;
-            float follow_velocity = max_velocity_;
-            float heading_error;
-
-            float distance = std::hypot(diff_x,diff_y);
-
-            // x & y
-            if(control_commands.hold_position && (distance <= braking_radius_) ){
-                // Brake 
-                vx = pid_x_->update(diff_x);
-                vy = pid_y_->update(diff_y);
-            } 
-            else {
-                //Brake off
-                velocity = follow_velocity;
-                vx = diff_x/(distance + epsilon) * velocity;
-                vy = diff_y/(distance + epsilon) * velocity;
-            }
-            // heading
-            if(control_commands.heading_on_path){
-                heading_ = std::atan2(diff_y,diff_x);
-                //TODO: improve heading
-                heading_error = angle_wrap(heading_-current_states.heading);
-            } 
-            else {
-                heading_error = angle_wrap(control_commands.heading-current_states.heading);
-            }
-            float angular_velocity =  pid_heading_->update(heading_error);
+        void PositionController::update(const States &current_states){
+            const double &x = current_states.x;
+            const double &y = current_states.y;
+            const double &desired_velocity = target_waypoint.velocity;
             
-            //send cmd
-            send_velocity_cmd(vx,vy,angular_velocity);
+            double vx;
+            double vy;
 
-            //RCLCPP_INFO(node_->get_logger(),"Velocity %.2f",angular_velocity);
-            prev_control_cmd_ = control_commands;
+            double R = 1.0; // Lookahead
+
+            double yaw_vel{};
+            double alpha_k = atan2(target_waypoint.y-last_waypoint.y,target_waypoint.x-last_waypoint.x);  // αk := atan2 (yk+1 − yk, xk+1 − xk) ∈ S (10.55)
+            double s = (x-last_waypoint.x)*cos(alpha_k) +(y-last_waypoint.y)*sin(alpha_k);                // along-track distance  s(t) = [x(t) − xk] cos(αk) + [y(t) − yk] sin(αk) (10.58)
+            double e =-(x-last_waypoint.x)*sin(alpha_k) + (y-last_waypoint.y)*cos(alpha_k);     //cross track error:  e(t) = −[x(t) − xk] sin(αk) + [y(t) − yk] cos(αk) (10.59)
+            double p = std::hypot(last_waypoint.x - target_waypoint.x,last_waypoint.y-target_waypoint.y);
+            if(s >=p){
+                s=p;
+                R = 0.0;
+            }
+
+            double x_los = last_waypoint.x + (s+R)*cos(alpha_k);
+            double y_los = last_waypoint.y + (s+R)*sin(alpha_k);
+
+            double X_d = atan2(y_los-y,x_los-x);
+
+            double e_x = last_waypoint.x+s*cos(alpha_k); // cross track coordinates
+            double e_y = last_waypoint.y+s*sin(alpha_k); 
+
+            if(target_waypoint.hold){
+                vx = pid_x_->update(target_waypoint.x-x);
+                vy = pid_y_->update(target_waypoint.y-y);
+            } else {
+                vx = cos(X_d)*desired_velocity;
+                vy = sin(X_d)*desired_velocity;
+            }
+
+            if(target_waypoint.keep_on_track) {
+                yaw_vel = pid_heading_->update(angle_wrap(X_d - current_states.heading));
+            } else {
+                yaw_vel = pid_heading_->update(angle_wrap(target_waypoint.heading - current_states.heading));
+            }
+            
+            send_velocity_cmd(vx, vy, yaw_vel);
         }
+
 
         geometry_msgs::msg::TwistStamped PositionController::get_velocity_cmd() const{
             return vel_cmd_;
+        }
+
+        void PositionController::set_waypoint(const waypoint_msgs::msg::Waypoint &wp, const waypoint_msgs::msg::Waypoint &last_wp){
+            target_waypoint = wp;
+            last_waypoint = last_wp;
         }
 
         double PositionController::angle_wrap(double radians) {

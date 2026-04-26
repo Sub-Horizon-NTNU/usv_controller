@@ -8,8 +8,6 @@ endif()
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # find dependencies
 find_package(ament_cmake REQUIRED)
-find_package(mavros REQUIRED)
-find_package(mavros_msgs REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
@@ -30,8 +28,6 @@ target_include_directories(usv_controller PRIVATE ${CMAKE_SOURCE_DIR}/include)
 
 ament_target_dependencies(usv_controller
   rclcpp
-  mavros
-  mavros_msgs
   sensor_msgs
   geometry_msgs
   tf2_geometry_msgs
