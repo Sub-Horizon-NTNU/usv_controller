@@ -15,7 +15,12 @@
         clear_waypoints_subscriber_ = node_->create_subscription<std_msgs::msg::Bool>(
             "selene/controller/clear_waypoints",
             10, 
-            [this](const std_msgs::msg::Bool){ clear_path(); });
+            [this](const std_msgs::msg::Bool){ 
+                RCLCPP_INFO(node_->get_logger(), "Waypoints cleared, holding last commanded position");
+                clear_path();
+            });
+
+            handle_none_waypoint();
     }
     
     void WaypointManager::add_to_path(const waypoint_msgs::msg::Waypoint &waypoint){
@@ -27,6 +32,20 @@
             most_recent_waypoint_ = waypoint; 
         }
         waypoints_.push_back(waypoint);
+        print_waypoint(waypoint);
+
+    }
+    void WaypointManager::print_waypoint(const waypoint_msgs::msg::Waypoint &waypoint){
+        RCLCPP_INFO(
+            node_->get_logger(),
+            "WAYPOINT RECEIVED: POSITION [%.2f, %.2f] | HEADING: %.2f | VELOCITY: %.2f | KEEP ON TRACK: %d | HOLD: %d",
+            waypoint.x,
+            waypoint.y,
+            waypoint.heading,
+            waypoint.velocity,
+            waypoint.keep_on_track,
+            waypoint.hold
+        );
     }
 
     void WaypointManager::add_list_to_path(const waypoint_msgs::msg::Waypoints &waypoints){
@@ -37,10 +56,11 @@
             previous_waypoint_.x = position_x_;
             previous_waypoint_.y = position_y_;
             previous_waypoint_.heading = heading_;
-            most_recent_waypoint_ = waypoints.waypoints[0]; 
+            most_recent_waypoint_ = waypoints.waypoints[0];
         }
         for(const waypoint_msgs::msg::Waypoint &waypoint : waypoints.waypoints){
             waypoints_.push_back(waypoint);
+            print_waypoint(waypoint);
         }
     }
 
@@ -48,6 +68,7 @@
         waypoints_.clear();
         waypoints_.shrink_to_fit();
         waypoint_index_ = 0;
+        handle_none_waypoint();
     }
 
     void WaypointManager::update(const float &current_x, const float &current_y, const float &heading){
@@ -75,7 +96,7 @@
 
     void WaypointManager::update_path(){
         if(waypoints_.empty()){
-            handle_none_waypoint();
+            //handle_none_waypoint();
             return;
         }
 
@@ -107,14 +128,15 @@
 
     void WaypointManager::handle_none_waypoint(){
         if(!hold_position_){
+            most_recent_waypoint_ = previous_waypoint_;
             most_recent_waypoint_.hold = true;
-            most_recent_waypoint_.x = position_x_;
-            most_recent_waypoint_.y = position_y_;
+            //most_recent_waypoint_.x = position_x_;
+            //most_recent_waypoint_.y = position_y_;
             most_recent_waypoint_.heading = heading_;
             most_recent_waypoint_.radius = 0.1;
             most_recent_waypoint_.keep_on_track = false;
-            previous_waypoint_ = most_recent_waypoint_;
             hold_position_=true;
+            RCLCPP_INFO(node_->get_logger(),"NO WAYPOINTS LEFT, HOLDING LAST POSITION");
         }
     }
 
@@ -170,9 +192,13 @@
 
     waypoint_msgs::msg::WaypointStatus WaypointManager::get_waypoint_status() {
         waypoint_msgs::msg::WaypointStatus wp_status;
+        wp_status.header.stamp = node_->now();
+        wp_status.current_x = position_x_;
+        wp_status.current_y = position_y_;
         wp_status.target_waypoint = get_current_waypoint();
         wp_status.distance_x = position_x_- get_current_waypoint().x;
         wp_status.distance_y = position_y_- get_current_waypoint().y;
+        wp_status.heading = heading_;
         wp_status.distance = std::hypot(wp_status.distance_x,wp_status.distance_y);
         return wp_status;
 

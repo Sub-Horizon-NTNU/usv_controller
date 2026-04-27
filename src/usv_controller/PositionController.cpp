@@ -20,7 +20,7 @@
             double s = (x-last_waypoint.x)*cos(alpha_k) +(y-last_waypoint.y)*sin(alpha_k);                // along-track distance  s(t) = [x(t) − xk] cos(αk) + [y(t) − yk] sin(αk) (10.58)
             double e =-(x-last_waypoint.x)*sin(alpha_k) + (y-last_waypoint.y)*cos(alpha_k);     //cross track error:  e(t) = −[x(t) − xk] sin(αk) + [y(t) − yk] cos(αk) (10.59)
             double p = std::hypot(last_waypoint.x - target_waypoint.x,last_waypoint.y-target_waypoint.y);
-            if(s >=p){
+            if(s >= p){
                 s=p;
                 R = 0.0;
             }
@@ -30,10 +30,10 @@
 
             double X_d = atan2(y_los-y,x_los-x);
 
-            double e_x = last_waypoint.x+s*cos(alpha_k); // cross track coordinates
-            double e_y = last_waypoint.y+s*sin(alpha_k); 
+            //double e_x = last_waypoint.x+s*cos(alpha_k); // cross track coordinates
+            //double e_y = last_waypoint.y+s*sin(alpha_k); 
 
-            if(target_waypoint.hold){
+            if(target_waypoint.hold && (p-s < R)){
                 vx = pid_x_->update(target_waypoint.x-x);
                 vy = pid_y_->update(target_waypoint.y-y);
             } else {
@@ -46,10 +46,9 @@
             } else {
                 yaw_vel = pid_heading_->update(angle_wrap(target_waypoint.heading - current_states.heading));
             }
-            
+            //RCLCPP_INFO(node_->get_logger(),"Heading X_d: %.2f  Angular vel cmd: %.2f", X_d, yaw_vel);
             send_velocity_cmd(vx, vy, yaw_vel);
         }
-
 
         geometry_msgs::msg::TwistStamped PositionController::get_velocity_cmd() const{
             return vel_cmd_;
