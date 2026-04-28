@@ -50,6 +50,7 @@ class WaypointManager {
     void handle_none_waypoint();
 
     bool handle_waypoint(const waypoint_msgs::msg::Waypoint &wp);
+    void print_waypoint(const waypoint_msgs::msg::Waypoint &waypoint);
 
     void move_to_next_waypoint();
 

@@ -16,10 +16,8 @@
     }
 
     void USV::update(){
-        
         waypoint_manager_->update(usv_states_->get_states().x, usv_states_->get_states().y,usv_states_->get_states().heading);
         position_controller_->set_waypoint(waypoint_manager_->get_current_waypoint(),waypoint_manager_->get_previous_waypoint());
-        
         position_controller_->update(usv_states_->get_states());
         
     }
