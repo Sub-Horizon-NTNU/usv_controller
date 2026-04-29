@@ -33,12 +33,12 @@
             //double e_x = last_waypoint.x+s*cos(alpha_k); // cross track coordinates
             //double e_y = last_waypoint.y+s*sin(alpha_k); 
 
-            if(target_waypoint.hold && (p-s < R)){
+            if(target_waypoint.hold && ((p-s < R) || (p-s < target_waypoint.radius))){
                 vx = pid_x_->update(target_waypoint.x-x);
                 vy = pid_y_->update(target_waypoint.y-y);
             } else {
-                vx = cos(X_d)*desired_velocity;
-                vy = sin(X_d)*desired_velocity;
+                vx = cos(X_d)*max_velocity_;
+                vy = sin(X_d)*max_velocity_;
             }
 
             if(target_waypoint.keep_on_track) {
