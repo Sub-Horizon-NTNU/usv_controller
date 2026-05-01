@@ -40,11 +40,17 @@
                 vy = sin(X_d)*desired_velocity;
             }
 
+            double target_heading;
             if(target_waypoint.keep_on_track) {
-                yaw_vel = pid_heading_->update(angle_wrap(X_d - current_states.heading));
+                target_heading = X_d;
             } else {
-                yaw_vel = pid_heading_->update(angle_wrap(target_waypoint.heading - current_states.heading));
+                target_heading = target_waypoint.heading;
             }
+
+            filtered_heading_ = target_heading * alpha_ + (1-alpha_)*filtered_heading_;
+            
+            yaw_vel = pid_heading_->update(angle_wrap(filtered_heading_ - current_states.heading));
+
             send_velocity_cmd(vx, vy, yaw_vel);
         }
 
@@ -85,6 +91,7 @@
             node_->declare_parameter<double>("lookahead_distance", 1.0);
             node_->declare_parameter<double>("max_linear_velocity", 3.0);
             node_->declare_parameter<double>("max_angular_velocity", 3.0);
+            node_->declare_parameter<double>("heading_reference_filter",0.5);
 
             this->pid_x_ = std::make_shared<PID>();
             this->pid_y_ = std::make_shared<PID>();
@@ -95,6 +102,7 @@
             pid_x_->set_kd(node_->get_parameter("lin_kd").as_double());
             pid_x_->set_max_output(node_->get_parameter("max_linear_velocity").as_double());
             lookahead_distance_ = node_->get_parameter("lookahead_distance").as_double();
+            alpha_ = node_->get_parameter("heading_reference_filter").as_double();
 
             pid_y_->set_kp(node_->get_parameter("lin_kp").as_double());
             pid_y_->set_ki(node_->get_parameter("lin_ki").as_double());

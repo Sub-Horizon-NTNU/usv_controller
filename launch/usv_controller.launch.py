@@ -16,6 +16,7 @@ def generate_launch_description():
     max_linear_velocity_arg = DeclareLaunchArgument("max_linear_velocity", default_value="3.0",description="Maximum linear velocity [m/s]")
     max_angular_velocity_arg = DeclareLaunchArgument("max_angular_velocity",default_value="3.0",description="Maximum angular velocity [rad/s]")
     lookahead_distance_arg = DeclareLaunchArgument("lookahead_distance", default_value="1.0", description="Distance on path too navigate towards [m]")
+    heading_reference_filter_arg = DeclareLaunchArgument("heading_reference_filter", default_value="0.5", description="Distance on path too navigate towards [m]")
 
     return LaunchDescription([
         yaw_kp_arg,
@@ -27,6 +28,7 @@ def generate_launch_description():
         max_linear_velocity_arg,
         max_angular_velocity_arg,
         lookahead_distance_arg,
+        heading_reference_filter_arg,
         Node(
             package="usv_controller",
             executable="usv_controller",
@@ -41,6 +43,7 @@ def generate_launch_description():
                 {"lin_kd": LaunchConfiguration("lin_kd")},
                 {"max_linear_velocity": LaunchConfiguration("max_linear_velocity")},
                 {"max_angular_velocity": LaunchConfiguration("max_angular_velocity")},
-                {"lookahead_distance": LaunchConfiguration("lookahead_distance")}
+                {"lookahead_distance": LaunchConfiguration("lookahead_distance")},
+                {"heading_reference_filter": LaunchConfiguration("heading_reference_filter")}
             ])
     ])

@@ -43,6 +43,8 @@ class PositionController{
     float max_velocity_;
     float heading_;
     double lookahead_distance_;
+    double filtered_heading_;
+    double alpha_;
 
     waypoint_msgs::msg::Waypoint target_waypoint;
     waypoint_msgs::msg::Waypoint last_waypoint;

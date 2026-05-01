@@ -33,8 +33,8 @@
         }
         waypoints_.push_back(waypoint);
         print_waypoint(waypoint);
-
     }
+    
     void WaypointManager::print_waypoint(const waypoint_msgs::msg::Waypoint &waypoint){
         RCLCPP_INFO(
             node_->get_logger(),
