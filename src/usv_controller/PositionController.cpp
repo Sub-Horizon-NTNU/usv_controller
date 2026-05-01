@@ -4,21 +4,21 @@
     PositionController::PositionController(rclcpp::Node::SharedPtr node): node_(node){
         init_parameters();
         velocity_publisher_ = node_->create_publisher<geometry_msgs::msg::TwistStamped>("mavros/setpoint_velocity/cmd_vel", 10);
+        parameter_callback_ = node_->add_on_set_parameters_callback(std::bind(&PositionController::handle_changed_parameters,this,std::placeholders::_1));  
     }
         void PositionController::update(const States &current_states){
             const double &x = current_states.x;
             const double &y = current_states.y;
             const double &desired_velocity = target_waypoint.velocity;
+            double R = lookahead_distance_; // Lookahead
             
             double vx;
             double vy;
 
-            double R = 1.0; // Lookahead
-
             double yaw_vel{};
             double alpha_k = atan2(target_waypoint.y-last_waypoint.y,target_waypoint.x-last_waypoint.x);  // αk := atan2 (yk+1 − yk, xk+1 − xk) ∈ S (10.55)
             double s = (x-last_waypoint.x)*cos(alpha_k) +(y-last_waypoint.y)*sin(alpha_k);                // along-track distance  s(t) = [x(t) − xk] cos(αk) + [y(t) − yk] sin(αk) (10.58)
-            double e =-(x-last_waypoint.x)*sin(alpha_k) + (y-last_waypoint.y)*cos(alpha_k);     //cross track error:  e(t) = −[x(t) − xk] sin(αk) + [y(t) − yk] cos(αk) (10.59)
+            //double e =-(x-last_waypoint.x)*sin(alpha_k) + (y-last_waypoint.y)*cos(alpha_k);     //cross track error:  e(t) = −[x(t) − xk] sin(αk) + [y(t) − yk] cos(αk) (10.59)
             double p = std::hypot(last_waypoint.x - target_waypoint.x,last_waypoint.y-target_waypoint.y);
             if(s >= p){
                 s=p;
@@ -32,13 +32,12 @@
 
             //double e_x = last_waypoint.x+s*cos(alpha_k); // cross track coordinates
             //double e_y = last_waypoint.y+s*sin(alpha_k); 
-
             if(target_waypoint.hold && ((p-s < R) || (p-s < target_waypoint.radius))){
                 vx = pid_x_->update(target_waypoint.x-x);
                 vy = pid_y_->update(target_waypoint.y-y);
             } else {
-                vx = cos(X_d)*max_velocity_;
-                vy = sin(X_d)*max_velocity_;
+                vx = cos(X_d)*desired_velocity;
+                vy = sin(X_d)*desired_velocity;
             }
 
             if(target_waypoint.keep_on_track) {
@@ -46,7 +45,6 @@
             } else {
                 yaw_vel = pid_heading_->update(angle_wrap(target_waypoint.heading - current_states.heading));
             }
-            //RCLCPP_INFO(node_->get_logger(),"Heading X_d: %.2f  Angular vel cmd: %.2f", X_d, yaw_vel);
             send_velocity_cmd(vx, vy, yaw_vel);
         }
 
@@ -82,11 +80,11 @@
 
             node_->declare_parameter<double>("lin_kp", 1.0);
             node_->declare_parameter<double>("lin_ki", 0.1);
-            node_->declare_parameter<double>("lin_kd", 0.0);
+            node_->declare_parameter<double>("lin_kd", 0.05);
 
-            node_->declare_parameter<double>("braking_radius", 2.0);
-            node_->declare_parameter<double>("max_linear_velocity", 0.5);
-            node_->declare_parameter<double>("max_angular_velocity", 0.5);
+            node_->declare_parameter<double>("lookahead_distance", 1.0);
+            node_->declare_parameter<double>("max_linear_velocity", 3.0);
+            node_->declare_parameter<double>("max_angular_velocity", 3.0);
 
             this->pid_x_ = std::make_shared<PID>();
             this->pid_y_ = std::make_shared<PID>();
@@ -96,6 +94,7 @@
             pid_x_->set_ki(node_->get_parameter("lin_ki").as_double());
             pid_x_->set_kd(node_->get_parameter("lin_kd").as_double());
             pid_x_->set_max_output(node_->get_parameter("max_linear_velocity").as_double());
+            lookahead_distance_ = node_->get_parameter("lookahead_distance").as_double();
 
             pid_y_->set_kp(node_->get_parameter("lin_kp").as_double());
             pid_y_->set_ki(node_->get_parameter("lin_ki").as_double());
@@ -105,8 +104,64 @@
             pid_heading_->set_kp(node_->get_parameter("yaw_kp").as_double());
             pid_heading_->set_ki(node_->get_parameter("yaw_ki").as_double());
             pid_heading_->set_kd(node_->get_parameter("yaw_kd").as_double());
+            
             pid_heading_->set_max_output(node_->get_parameter("max_angular_velocity").as_double());
             max_velocity_ = node_->get_parameter("max_linear_velocity").as_double();
-
-            braking_radius_ = node_->get_parameter("braking_radius").as_double();
         }
+
+        rcl_interfaces::msg::SetParametersResult PositionController::handle_changed_parameters(const std::vector<rclcpp::Parameter> &parameters){
+        rcl_interfaces::msg::SetParametersResult result;
+        result.successful = true;
+        result.reason = "Parameters updated";
+        
+        for(const auto &parameter : parameters){
+            double param_val = parameter.as_double();
+            if(parameter.get_name() == "lookahead_distance"){
+                lookahead_distance_ = param_val;
+                RCLCPP_INFO(node_->get_logger(),"Lookahead distance set to: %.2f", param_val);
+            } 
+            else if(parameter.get_name() == "max_angular_velocity"){
+                pid_heading_->set_max_output(param_val);
+                RCLCPP_INFO(node_->get_logger(),"max_angular_velocity set to: %.4f [rad/s]", param_val);
+            }
+            else if(parameter.get_name() == "max_linear_velocity"){
+                pid_x_->set_max_output(param_val);
+                pid_y_->set_max_output(param_val);
+                RCLCPP_INFO(node_->get_logger(),"max_linear_velocity set to: %.4f [m/s]", param_val);
+            }
+            else if(parameter.get_name() == "yaw_kp"){
+                pid_heading_->set_kp(parameter.as_double());
+                RCLCPP_INFO(node_->get_logger(),"yaw Kp set to: %.4f ", param_val);
+            }
+            else if(parameter.get_name() == "yaw_ki"){
+                pid_heading_->set_ki(parameter.as_double());
+                RCLCPP_INFO(node_->get_logger(),"yaw Ki set to: %.4f", param_val);
+            }
+            else if(parameter.get_name() == "yaw_kd"){
+                pid_heading_->set_kd(parameter.as_double());
+                RCLCPP_INFO(node_->get_logger(),"yaw Kd set to: %.4f", param_val);
+            }
+            else if(parameter.get_name() == "lin_kp"){
+                pid_x_->set_kp(parameter.as_double());
+                pid_y_->set_kp(parameter.as_double());
+
+                RCLCPP_INFO(node_->get_logger(),"PID X/Y Kp set to: %.4f", param_val);
+            }
+            else if(parameter.get_name() == "lin_ki"){
+                pid_x_->set_ki(parameter.as_double());
+                pid_y_->set_ki(parameter.as_double());
+                RCLCPP_INFO(node_->get_logger(),"PID X/Y Ki set to: %.4f", param_val);
+            }
+            else if(parameter.get_name() == "lin_kd"){
+                pid_x_->set_kd(parameter.as_double());
+                pid_y_->set_kd(parameter.as_double());
+                RCLCPP_INFO(node_->get_logger(),"PID X/Y Kd set to: %.4f", param_val);
+            }
+            else {
+                result.successful = false;
+                result.reason = "Parameter set incorrectly";
+                RCLCPP_WARN(node_->get_logger(), "Parameter unsupported: %s", parameter.get_name().c_str());
+            }
+        }
+        return result;
+    }

@@ -4,17 +4,17 @@
     WaypointManager::WaypointManager(rclcpp::Node::SharedPtr node): node_(node){
         waypoint_subscriber_ = node_->create_subscription<waypoint_msgs::msg::Waypoint>(
             "selene/controller/waypoint",
-            10, 
+            rclcpp::QoS(10).transient_local(), 
             [this](const waypoint_msgs::msg::Waypoint waypoint){ add_to_path(waypoint); });
         
         waypoint_list_subscriber_ = node_->create_subscription<waypoint_msgs::msg::Waypoints>(
             "selene/controller/waypoints",
-            10, 
+            rclcpp::QoS(10).transient_local(), 
             [this](const waypoint_msgs::msg::Waypoints waypoints){ add_list_to_path(waypoints); });
         
         clear_waypoints_subscriber_ = node_->create_subscription<std_msgs::msg::Bool>(
             "selene/controller/clear_waypoints",
-            10, 
+            rclcpp::QoS(10).transient_local(), 
             [this](const std_msgs::msg::Bool){ 
                 RCLCPP_INFO(node_->get_logger(), "Waypoints cleared, holding last commanded position");
                 clear_path();
@@ -95,10 +95,8 @@
     }
 
     void WaypointManager::update_path(){
-        if(waypoints_.empty()){
-            //handle_none_waypoint();
-            return;
-        }
+
+        if(waypoints_.empty()){ return; }
 
         waypoint_msgs::msg::Waypoint &target_wp = waypoints_[waypoint_index_];
 
@@ -136,7 +134,7 @@
             most_recent_waypoint_.radius = 0.1;
             most_recent_waypoint_.keep_on_track = false;
             hold_position_=true;
-            RCLCPP_INFO(node_->get_logger(),"NO WAYPOINTS LEFT, HOLDING LAST POSITION");
+            RCLCPP_INFO(node_->get_logger(),"NO WAYPOINTS LEFT TO NAVIGATE TOWARDS, HOLDING LAST POSITION");
         }
     }
 
