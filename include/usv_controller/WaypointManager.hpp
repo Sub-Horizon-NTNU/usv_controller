@@ -38,7 +38,8 @@ class WaypointManager {
     private:
     
     void add_to_path(const waypoint_msgs::msg::Waypoint &waypoint);
-    
+    const std::vector<waypoint_msgs::msg::Waypoint>  get_waypoints();
+
     void add_list_to_path(const waypoint_msgs::msg::Waypoints &waypoints);
     
     void clear_path();

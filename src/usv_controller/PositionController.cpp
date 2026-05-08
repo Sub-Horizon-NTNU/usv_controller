@@ -9,35 +9,46 @@
         void PositionController::update(const States &current_states){
             const double &x = current_states.x;
             const double &y = current_states.y;
+            heading_ = current_states.heading;
             const double &desired_velocity = target_waypoint.velocity;
             double R = lookahead_distance_; // Lookahead
-            
+            double delta{};
             double vx;
             double vy;
 
             double yaw_vel{};
             double alpha_k = atan2(target_waypoint.y-last_waypoint.y,target_waypoint.x-last_waypoint.x);  // αk := atan2 (yk+1 − yk, xk+1 − xk) ∈ S (10.55)
             double s = (x-last_waypoint.x)*cos(alpha_k) +(y-last_waypoint.y)*sin(alpha_k);                // along-track distance  s(t) = [x(t) − xk] cos(αk) + [y(t) − yk] sin(αk) (10.58)
-            //double e =-(x-last_waypoint.x)*sin(alpha_k) + (y-last_waypoint.y)*cos(alpha_k);     //cross track error:  e(t) = −[x(t) − xk] sin(αk) + [y(t) − yk] cos(αk) (10.59)
+            double e =-(x-last_waypoint.x)*sin(alpha_k) + (y-last_waypoint.y)*cos(alpha_k);     //cross track error:  e(t) = −[x(t) − xk] sin(αk) + [y(t) − yk] cos(αk) (10.59)
             double p = std::hypot(last_waypoint.x - target_waypoint.x,last_waypoint.y-target_waypoint.y);
             if(s >= p){
                 s=p;
                 R = 0.0;
             }
+            if(std::abs(e) < R){
+                delta = sqrt(R*R-e*e);
+            } else {
+                delta = 0;
+            }
 
-            double x_los = last_waypoint.x + (s+R)*cos(alpha_k);
-            double y_los = last_waypoint.y + (s+R)*sin(alpha_k);
+            double x_los = last_waypoint.x + (s+delta)*cos(alpha_k);
+            double y_los = last_waypoint.y + (s+delta)*sin(alpha_k);
 
             double X_d = atan2(y_los-y,x_los-x);
 
             //double e_x = last_waypoint.x+s*cos(alpha_k); // cross track coordinates
             //double e_y = last_waypoint.y+s*sin(alpha_k); 
+
             if(target_waypoint.hold && ((p-s < R) || (p-s < target_waypoint.radius))){
-                vx = pid_x_->update(target_waypoint.x-x);
-                vy = pid_y_->update(target_waypoint.y-y);
+                double error_x_world = target_waypoint.x-x;
+                double error_y_world = target_waypoint.y-y;
+
+                vx = pid_x_->update(error_x_world);
+                vy = pid_y_->update(error_y_world);
             } else {
-                vx = cos(X_d)*desired_velocity;
-                vy = sin(X_d)*desired_velocity;
+                vx = desired_velocity*cos(X_d);
+                vy = desired_velocity*sin(X_d);
+               
             }
 
             double target_heading;
@@ -48,10 +59,14 @@
             }
 
             filtered_heading_ = target_heading * alpha_ + (1-alpha_)*filtered_heading_;
-            
+            //Logging 
+            target_heading_ = filtered_heading_;
+
+
+
             yaw_vel = pid_heading_->update(angle_wrap(filtered_heading_ - current_states.heading));
 
-            send_velocity_cmd(vx, vy, yaw_vel);
+            send_velocity_cmd_world(vx, vy, yaw_vel);
         }
 
         geometry_msgs::msg::TwistStamped PositionController::get_velocity_cmd() const{
@@ -69,12 +84,25 @@
 
             return radians;
         }
-        void PositionController::send_velocity_cmd(const float &vx, const float &vy, const float &vz){
+        void PositionController::send_velocity_cmd_world(const float &vx, const float &vy, const float &vz){
             vel_cmd_.header.stamp =  node_->now();
             vel_cmd_.header.frame_id = "map"; // World reference frame
             // NED to ENU
             vel_cmd_.twist.linear.x = vy;
             vel_cmd_.twist.linear.y = vx;
+            vel_cmd_.twist.angular.z = -vz;
+            velocity_publisher_->publish(vel_cmd_);
+        }
+
+         void PositionController::send_velocity_cmd_body(const float &vx, const float &vy, const float &vz){
+            //  BODY to NED world
+            double vx_world = cos(heading_)*vx-sin(heading_)*vy;
+            double vy_world = sin(heading_)*vx+cos(heading_)*vy;
+            vel_cmd_.header.stamp =  node_->now();
+            vel_cmd_.header.frame_id = "map"; // World reference frame
+            // NED to ENU
+            vel_cmd_.twist.linear.x = vy_world;
+            vel_cmd_.twist.linear.y = vx_world;
             vel_cmd_.twist.angular.z = -vz;
             velocity_publisher_->publish(vel_cmd_);
         }
@@ -116,6 +144,20 @@
             pid_heading_->set_max_output(node_->get_parameter("max_angular_velocity").as_double());
             max_velocity_ = node_->get_parameter("max_linear_velocity").as_double();
         }
+
+        waypoint_msgs::msg::WaypointStatus PositionController::get_waypoint_status() {
+            waypoint_msgs::msg::WaypointStatus wp_status;
+            wp_status.header.stamp = node_->now();
+            wp_status.current_x = position_x_;
+            wp_status.current_y = position_y_;
+            wp_status.target_waypoint = target_waypoint;
+            wp_status.distance_x = position_x_- target_waypoint.x;
+            wp_status.distance_y = position_y_- target_waypoint.y;
+            wp_status.heading = heading_;
+            wp_status.distance = std::hypot(wp_status.distance_x,wp_status.distance_y);
+            wp_status.desired_heading = target_heading_;
+            return wp_status;
+    }
 
         rcl_interfaces::msg::SetParametersResult PositionController::handle_changed_parameters(const std::vector<rclcpp::Parameter> &parameters){
         rcl_interfaces::msg::SetParametersResult result;

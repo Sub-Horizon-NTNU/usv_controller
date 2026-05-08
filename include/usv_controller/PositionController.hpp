@@ -6,6 +6,7 @@
 #include "usv_controller/PID.hpp"
 #include <waypoint_msgs/msg/waypoint.hpp>
 #include <geometry_msgs/msg/twist_stamped.hpp>
+#include <waypoint_msgs/msg/waypoint_status.hpp>
 #include <iostream>
 
 
@@ -22,9 +23,16 @@ class PositionController{
         
         double get_distance();
 
+        waypoint_msgs::msg::WaypointStatus get_waypoint_status();
+
         geometry_msgs::msg::TwistStamped get_velocity_cmd() const;
-        
+        std::vector<waypoint_msgs::msg::Waypoint>  get_waypoints();
+
         private:
+        void send_velocity_cmd_world(const float &vx, const float &vy, const float &vz);
+        void send_velocity_cmd_body(const float &vx, const float &vy, const float &vz);
+
+
 
         double angle_wrap(double radians);
         
@@ -45,6 +53,9 @@ class PositionController{
     double lookahead_distance_;
     double filtered_heading_;
     double alpha_;
+    double position_x_;
+    double position_y_;
+    double target_heading_;
 
     waypoint_msgs::msg::Waypoint target_waypoint;
     waypoint_msgs::msg::Waypoint last_waypoint;

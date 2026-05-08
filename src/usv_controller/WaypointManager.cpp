@@ -1,4 +1,6 @@
 #include "usv_controller/WaypointManager.hpp"
+#include <rclcpp/qos.hpp>
+#include <waypoint_msgs/msg/detail/waypoint__struct.hpp>
 #include <waypoint_msgs/msg/detail/waypoint_status__struct.hpp>
 
     WaypointManager::WaypointManager(rclcpp::Node::SharedPtr node): node_(node){
@@ -14,7 +16,7 @@
         
         clear_waypoints_subscriber_ = node_->create_subscription<std_msgs::msg::Bool>(
             "selene/controller/clear_waypoints",
-            rclcpp::QoS(10).transient_local(), 
+            rclcpp::QoS(10).transient_local().reliable(), 
             [this](const std_msgs::msg::Bool){ 
                 RCLCPP_INFO(node_->get_logger(), "Waypoints cleared, holding last commanded position");
                 clear_path();
@@ -84,6 +86,12 @@
         if(updated_position){
             update_path();
         }
+    }
+
+    const std::vector<waypoint_msgs::msg::Waypoint>  WaypointManager::get_waypoints() {
+        std::vector<waypoint_msgs::msg::Waypoint> waypoints;
+        waypoints.assign(waypoints_.begin()+waypoint_index_,waypoints_.end());
+        return waypoints;
     }
 
     waypoint_msgs::msg::Waypoint WaypointManager::get_current_waypoint(){
@@ -199,7 +207,6 @@
         wp_status.heading = heading_;
         wp_status.distance = std::hypot(wp_status.distance_x,wp_status.distance_y);
         return wp_status;
-
     }
  
 

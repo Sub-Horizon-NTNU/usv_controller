@@ -23,5 +23,5 @@
     }
 
     void USV::publish_status(){
-        status_publisher_->publish(waypoint_manager_->get_waypoint_status());
+        status_publisher_->publish(position_controller_->get_waypoint_status());
     }
