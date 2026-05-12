@@ -3,11 +3,10 @@
 
     PositionController::PositionController(rclcpp::Node::SharedPtr node): node_(node){
         init_parameters();
+        double initial_heading_deg = node_->get_parameter("initial_heading").as_double();
+        filtered_heading_ = initial_heading_deg * M_PI / 180.0;
         velocity_publisher_ = node_->create_publisher<geometry_msgs::msg::TwistStamped>("mavros/setpoint_velocity/cmd_vel", 10);
-        parameter_callback_ = node_->add_on_set_parameters_callback(std::bind(&PositionController::handle_changed_parameters,this,std::placeholders::_1));  
-
-
-
+        parameter_callback_ = node_->add_on_set_parameters_callback(std::bind(&PositionController::handle_changed_parameters,this,std::placeholders::_1));
     }
         void PositionController::update(const States &current_states){
             const double &x = current_states.x;
@@ -20,6 +19,8 @@
             double delta{};
             double vx;
             double vy;
+            pid_x_->set_max_output(desired_velocity);
+            pid_y_->set_max_output(desired_velocity);
 
             double yaw_vel{};
             double alpha_k = atan2(target_waypoint.y-last_waypoint.y,target_waypoint.x-last_waypoint.x);  // αk := atan2 (yk+1 − yk, xk+1 − xk) ∈ S (10.55)
@@ -44,7 +45,7 @@
             //double e_x = last_waypoint.x+s*cos(alpha_k); // cross track coordinates
             //double e_y = last_waypoint.y+s*sin(alpha_k); 
 
-            if(target_waypoint.hold && ((p-s < R) || (p-s < target_waypoint.radius))){
+            if(target_waypoint.hold && ((p-s < R) || (p-s < target_waypoint.radius)) || (target_waypoint.type == waypoint_msgs::msg::Waypoint::HOLD) ){
                 double error_x_world = target_waypoint.x-x;
                 double error_y_world = target_waypoint.y-y;
 
