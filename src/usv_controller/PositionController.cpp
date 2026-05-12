@@ -9,6 +9,8 @@
         void PositionController::update(const States &current_states){
             const double &x = current_states.x;
             const double &y = current_states.y;
+            position_x_ = current_states.x;
+            position_y_ = current_states.y;
             heading_ = current_states.heading;
             const double &desired_velocity = target_waypoint.velocity;
             double R = lookahead_distance_; // Lookahead
@@ -61,8 +63,6 @@
             filtered_heading_ = target_heading * alpha_ + (1-alpha_)*filtered_heading_;
             //Logging 
             target_heading_ = filtered_heading_;
-
-
 
             yaw_vel = pid_heading_->update(angle_wrap(filtered_heading_ - current_states.heading));
 
