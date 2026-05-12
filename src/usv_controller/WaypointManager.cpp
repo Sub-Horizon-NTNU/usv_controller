@@ -22,7 +22,8 @@
                 clear_path();
             });
 
-            handle_none_waypoint();
+            //handle_none_waypoint();
+        
     }
     
     void WaypointManager::add_to_path(const waypoint_msgs::msg::Waypoint &waypoint){
