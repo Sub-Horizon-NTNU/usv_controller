@@ -3,7 +3,7 @@
 #include <waypoint_msgs/msg/detail/waypoint__struct.hpp>
 #include <waypoint_msgs/msg/detail/waypoint_status__struct.hpp>
 
-    WaypointManager::WaypointManager(rclcpp::Node::SharedPtr node): node_(node){
+    WaypointManager::WaypointManager(rclcpp::Node::SharedPtr node, float current_heading): node_(node){
         waypoint_subscriber_ = node_->create_subscription<waypoint_msgs::msg::Waypoint>(
             "selene/controller/waypoint",
             rclcpp::QoS(10).transient_local(), 
@@ -22,8 +22,10 @@
                 clear_path();
             });
 
-            //handle_none_waypoint();
-        
+            heading_ = current_heading;
+
+            handle_none_waypoint();
+
     }
     
     void WaypointManager::add_to_path(const waypoint_msgs::msg::Waypoint &waypoint){
@@ -105,7 +107,9 @@
 
     void WaypointManager::update_path(){
 
-        if(waypoints_.empty()){ return; }
+        if(waypoints_.empty()){ 
+            return; 
+        }
 
         waypoint_msgs::msg::Waypoint &target_wp = waypoints_[waypoint_index_];
 

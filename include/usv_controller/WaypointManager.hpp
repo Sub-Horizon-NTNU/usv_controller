@@ -23,7 +23,7 @@
 
 class WaypointManager {
     public:
-    WaypointManager(rclcpp::Node::SharedPtr node);
+    WaypointManager(rclcpp::Node::SharedPtr node, float current_heading);
     
     //Message containing target position and control mode(s)
     
@@ -75,6 +75,7 @@ class WaypointManager {
     std::chrono::steady_clock::time_point current_waypoint_time_start;
     bool hold_timer_started_{};
     bool hold_position_{};
+    float initial_heading_{};
 
     rclcpp::Subscription<waypoint_msgs::msg::Waypoint>::SharedPtr waypoint_subscriber_;
     rclcpp::Subscription<waypoint_msgs::msg::Waypoints>::SharedPtr waypoint_list_subscriber_;

@@ -17,7 +17,7 @@ def generate_launch_description():
     max_angular_velocity_arg = DeclareLaunchArgument("max_angular_velocity",default_value="3.0",description="Maximum angular velocity [rad/s]")
     lookahead_distance_arg = DeclareLaunchArgument("lookahead_distance", default_value="1.0", description="Distance on path too navigate towards [m]")
     heading_reference_filter_arg = DeclareLaunchArgument("heading_reference_filter", default_value="0.5", description="Distance on path too navigate towards [m]")
-
+    initial_heading_arg = DeclareLaunchArgument("initial_heading",default_value="0.0",description="Initial heading when booting up");
     return LaunchDescription([
         yaw_kp_arg,
         yaw_ki_arg,

@@ -32,8 +32,6 @@ class PositionController{
         void send_velocity_cmd_world(const float &vx, const float &vy, const float &vz);
         void send_velocity_cmd_body(const float &vx, const float &vy, const float &vz);
 
-
-
         double angle_wrap(double radians);
         
         void send_velocity_cmd(const float &vx, const float &vy, const float &vz);
@@ -63,5 +61,4 @@ class PositionController{
     rclcpp::TimerBase::SharedPtr publish_velocity_timer_;
     rclcpp::Publisher<geometry_msgs::msg::TwistStamped>::SharedPtr velocity_publisher_;
     rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr parameter_callback_;
-    
 };

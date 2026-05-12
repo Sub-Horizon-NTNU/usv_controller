@@ -5,6 +5,9 @@
         init_parameters();
         velocity_publisher_ = node_->create_publisher<geometry_msgs::msg::TwistStamped>("mavros/setpoint_velocity/cmd_vel", 10);
         parameter_callback_ = node_->add_on_set_parameters_callback(std::bind(&PositionController::handle_changed_parameters,this,std::placeholders::_1));  
+
+
+
     }
         void PositionController::update(const States &current_states){
             const double &x = current_states.x;
@@ -50,7 +53,6 @@
             } else {
                 vx = desired_velocity*cos(X_d);
                 vy = desired_velocity*sin(X_d);
-               
             }
 
             double target_heading;
