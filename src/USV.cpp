@@ -2,9 +2,13 @@
 
 
     USV::USV(rclcpp::Node::SharedPtr node): node_(node){
+        node_->declare_parameter<double>("initial_heading", 0.0);
+        double initial_heading_deg = node_->get_parameter("initial_heading").as_double();
+        float initial_heading_rad = static_cast<float>(initial_heading_deg * M_PI / 180.0);
+
         this->usv_states_ = std::make_unique<USVStates>(node_);
         this->position_controller_ = std::make_unique<PositionController>(node_);
-        this->waypoint_manager_ = std::make_unique<WaypointManager>(node_,usv_states_->get_states().heading);
+        this->waypoint_manager_ = std::make_unique<WaypointManager>(node_, initial_heading_rad);
         control_loop_timer_ = node->create_wall_timer(std::chrono::milliseconds(50), std::bind(&USV::update, this));
 
         status_publisher_ = node->create_publisher<waypoint_msgs::msg::WaypointStatus>("selene/controller/status",10);

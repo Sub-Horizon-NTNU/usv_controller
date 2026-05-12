@@ -29,6 +29,7 @@ def generate_launch_description():
         max_angular_velocity_arg,
         lookahead_distance_arg,
         heading_reference_filter_arg,
+        initial_heading_arg,
         Node(
             package="usv_controller",
             executable="usv_controller",
@@ -44,6 +45,7 @@ def generate_launch_description():
                 {"max_linear_velocity": LaunchConfiguration("max_linear_velocity")},
                 {"max_angular_velocity": LaunchConfiguration("max_angular_velocity")},
                 {"lookahead_distance": LaunchConfiguration("lookahead_distance")},
-                {"heading_reference_filter": LaunchConfiguration("heading_reference_filter")}
+                {"heading_reference_filter": LaunchConfiguration("heading_reference_filter")},
+                {"initial_heading": LaunchConfiguration("initial_heading")}
             ])
     ])
