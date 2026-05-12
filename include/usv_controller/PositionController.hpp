@@ -47,15 +47,14 @@ class PositionController{
     std::shared_ptr<PID> pid_y_;
     std::shared_ptr<PID> pid_heading_;
 
-    float braking_radius_;
-    float max_velocity_;
-    float heading_;
-    double lookahead_distance_;
-    double filtered_heading_;
-    double alpha_;
-    double position_x_;
-    double position_y_;
-    double target_heading_;
+    float max_velocity_{};
+    float heading_{};
+    double lookahead_distance_{};
+    double filtered_heading_{};
+    double alpha_{};
+    double position_x_{};
+    double position_y_{};
+    double target_heading_{};
 
     waypoint_msgs::msg::Waypoint target_waypoint;
     waypoint_msgs::msg::Waypoint last_waypoint;
