@@ -14,11 +14,14 @@
             position_x_ = current_states.x;
             position_y_ = current_states.y;
             heading_ = current_states.heading;
-            const double &desired_velocity = target_waypoint.velocity;
+            double desired_velocity = target_waypoint.velocity;
             double R = lookahead_distance_; // Lookahead
             double delta{};
             double vx;
             double vy;
+            if(desired_velocity <=0.01){
+                desired_velocity = 2.0;
+            }
             pid_x_->set_max_output(desired_velocity);
             pid_y_->set_max_output(desired_velocity);
 
@@ -45,7 +48,7 @@
             //double e_x = last_waypoint.x+s*cos(alpha_k); // cross track coordinates
             //double e_y = last_waypoint.y+s*sin(alpha_k); 
 
-            if(target_waypoint.hold && ((p-s < R) || (p-s < target_waypoint.radius)) || (target_waypoint.type == waypoint_msgs::msg::Waypoint::HOLD) ){
+            if(target_waypoint.hold && (((p-s < R) || (p-s < target_waypoint.radius)) || (target_waypoint.type == waypoint_msgs::msg::Waypoint::HOLD))){
                 double error_x_world = target_waypoint.x-x;
                 double error_y_world = target_waypoint.y-y;
 
@@ -80,13 +83,14 @@
             target_waypoint = wp;
             last_waypoint = last_wp;
         }
-
+        
         double PositionController::angle_wrap(double radians) {
             while (radians > M_PI)  { radians -= 2 * M_PI; }
             while (radians < -M_PI) { radians += 2 * M_PI; }
 
             return radians;
         }
+
         void PositionController::send_velocity_cmd_world(const float &vx, const float &vy, const float &vz){
             vel_cmd_.header.stamp =  node_->now();
             vel_cmd_.header.frame_id = "map"; // World reference frame

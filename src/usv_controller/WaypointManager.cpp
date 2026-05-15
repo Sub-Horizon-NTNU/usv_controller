@@ -23,9 +23,7 @@
             });
 
             heading_ = current_heading;
-
             handle_none_waypoint();
-
     }
     
     void WaypointManager::add_to_path(const waypoint_msgs::msg::Waypoint &waypoint){
