@@ -8,7 +8,8 @@
 #include <memory>
 #include <rclcpp/rclcpp.hpp>
 #include "usv_controller/PositionController.hpp"
-#include "usv_controller/USVStates.hpp"
+//#include "usv_controller/USVStates.hpp"
+#include "usv_controller/USVTransformHandler.hpp"
 #include <chrono>
 #include <waypoint_msgs/msg/waypoint_status.hpp>
 
@@ -23,7 +24,7 @@ class USV{
     private:
         rclcpp::TimerBase::SharedPtr control_loop_timer_;
         rclcpp::Node::SharedPtr node_;
-        std::unique_ptr<USVStates> usv_states_;
+        std::unique_ptr<USVTransformHandler> usv_transform_handler_;;
         std::unique_ptr<PositionController> position_controller_;
         std::unique_ptr<WaypointManager> waypoint_manager_;
         rclcpp::Publisher<waypoint_msgs::msg::WaypointStatus>::SharedPtr status_publisher_;

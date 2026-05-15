@@ -22,6 +22,7 @@ src/usv_controller/PID.cpp
 src/usv_controller/PositionController.cpp
 src/usv_controller/USVStates.cpp
 src/usv_controller/WaypointManager.cpp
+src/usv_controller/USVTransformHandler.cpp
 )
 
 target_include_directories(usv_controller PRIVATE ${CMAKE_SOURCE_DIR}/include)
