@@ -4,6 +4,8 @@
 #include <waypoint_msgs/msg/detail/waypoint_status__struct.hpp>
 
     WaypointManager::WaypointManager(rclcpp::Node::SharedPtr node, float current_heading): node_(node){
+        heading_ = current_heading;
+        
         waypoint_subscriber_ = node_->create_subscription<waypoint_msgs::msg::Waypoint>(
             "selene/controller/waypoint",
             rclcpp::QoS(10).transient_local(), 
@@ -22,7 +24,6 @@
                 clear_path();
             });
 
-            heading_ = current_heading;
             handle_none_waypoint();
     }
     
@@ -91,8 +92,12 @@
 
     const std::vector<waypoint_msgs::msg::Waypoint>  WaypointManager::get_waypoints() {
         std::vector<waypoint_msgs::msg::Waypoint> waypoints;
-        waypoints.assign(waypoints_.begin()+waypoint_index_,waypoints_.end());
+        waypoints.assign(waypoints_.begin(),waypoints_.end());
         return waypoints;
+    }
+
+    unsigned int WaypointManager::get_current_waypoint_index() const{
+        return waypoint_index_;
     }
 
     waypoint_msgs::msg::Waypoint WaypointManager::get_current_waypoint(){
@@ -143,10 +148,15 @@
             //most_recent_waypoint_.y = position_y_;
             most_recent_waypoint_.heading = heading_;
             most_recent_waypoint_.radius = 0.1;
+            most_recent_waypoint_.type = waypoint_msgs::msg::Waypoint::HOLD;
             most_recent_waypoint_.keep_on_track = false;
             hold_position_=true;
             RCLCPP_INFO(node_->get_logger(),"NO WAYPOINTS LEFT TO NAVIGATE TOWARDS, HOLDING LAST POSITION");
         }
+    }
+
+    void WaypointManager::set_remaining_distance(const double s){
+        along_track_distance_ = s;
     }
 
     bool WaypointManager::handle_waypoint(const waypoint_msgs::msg::Waypoint &wp){
@@ -197,19 +207,6 @@
         bool wp_check = handle_waypoint(wp_pass);
 
         return wp_check;
-    }
-
-    waypoint_msgs::msg::WaypointStatus WaypointManager::get_waypoint_status() {
-        waypoint_msgs::msg::WaypointStatus wp_status;
-        wp_status.header.stamp = node_->now();
-        wp_status.current_x = position_x_;
-        wp_status.current_y = position_y_;
-        wp_status.target_waypoint = get_current_waypoint();
-        wp_status.distance_x = position_x_- get_current_waypoint().x;
-        wp_status.distance_y = position_y_- get_current_waypoint().y;
-        wp_status.heading = heading_;
-        wp_status.distance = std::hypot(wp_status.distance_x,wp_status.distance_y);
-        return wp_status;
     }
  
 

@@ -7,6 +7,7 @@
 #include <waypoint_msgs/msg/waypoint.hpp>
 #include <geometry_msgs/msg/twist_stamped.hpp>
 #include <waypoint_msgs/msg/waypoint_status.hpp>
+#include "WaypointManager.hpp"
 #include <iostream>
 
 
@@ -53,9 +54,9 @@ class PositionController{
     double position_x_{};
     double position_y_{};
     double target_heading_{};
-
     waypoint_msgs::msg::Waypoint target_waypoint;
-    waypoint_msgs::msg::Waypoint last_waypoint;
+
+    std::unique_ptr<WaypointManager> waypoint_manager_;
 
     geometry_msgs::msg::TwistStamped vel_cmd_;
     rclcpp::TimerBase::SharedPtr publish_velocity_timer_;

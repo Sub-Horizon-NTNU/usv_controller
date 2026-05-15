@@ -26,7 +26,6 @@ class USV{
         rclcpp::Node::SharedPtr node_;
         std::unique_ptr<USVTransformHandler> usv_transform_handler_;
         std::unique_ptr<PositionController> position_controller_;
-        std::unique_ptr<WaypointManager> waypoint_manager_;
         rclcpp::Publisher<waypoint_msgs::msg::WaypointStatus>::SharedPtr status_publisher_;
         rclcpp::TimerBase::SharedPtr status_publisher_timer_;
         

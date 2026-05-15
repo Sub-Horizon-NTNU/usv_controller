@@ -1,4 +1,6 @@
 #include "usv_controller/PositionController.hpp"
+#include "usv_controller/WaypointManager.hpp"
+#include <waypoint_msgs/msg/detail/waypoint__struct.hpp>
 
 
     PositionController::PositionController(rclcpp::Node::SharedPtr node): node_(node){
@@ -7,50 +9,92 @@
         filtered_heading_ = initial_heading_deg * M_PI / 180.0;
         velocity_publisher_ = node_->create_publisher<geometry_msgs::msg::TwistStamped>("mavros/setpoint_velocity/cmd_vel", 10);
         parameter_callback_ = node_->add_on_set_parameters_callback(std::bind(&PositionController::handle_changed_parameters,this,std::placeholders::_1));
+        waypoint_manager_ = std::make_unique<WaypointManager>(node,initial_heading_deg * M_PI / 180.0);
     }
         void PositionController::update(const States &current_states){
+
             const double &x = current_states.x;
             const double &y = current_states.y;
             position_x_ = current_states.x;
             position_y_ = current_states.y;
             heading_ = current_states.heading;
-            double desired_velocity = target_waypoint.velocity;
             double R = lookahead_distance_; // Lookahead
             double delta{};
             double vx;
             double vy;
+
+            waypoint_manager_->update(x, y,heading_);
+            
+            waypoint_msgs::msg::Waypoint prev_waypoint = waypoint_manager_->get_previous_waypoint();
+            waypoint_msgs::msg::Waypoint next_waypoint = waypoint_manager_->get_current_waypoint();
+
+            double alpha_k = atan2(next_waypoint.y-prev_waypoint.y,next_waypoint.x-prev_waypoint.x);  // αk := atan2 (yk+1 − yk, xk+1 − xk) ∈ S (10.55)
+            double s = (x-prev_waypoint.x)*cos(alpha_k) +(y-prev_waypoint.y)*sin(alpha_k);    
+            double e = -(x-prev_waypoint.x)*sin(alpha_k) + (y-prev_waypoint.y)*cos(alpha_k);   
+            double p = std::hypot(prev_waypoint.x - next_waypoint.x,prev_waypoint.y-next_waypoint.y); 
+            
+            waypoint_manager_->set_remaining_distance(p-s);
+            
+            if(std::abs(e) < R) {
+                delta = sqrt(R*R - e*e);
+            } else {
+                delta = 0;
+            }
+            
+            if(delta + s > p)
+            {
+                std::vector<waypoint_msgs::msg::Waypoint> waypoints = waypoint_manager_->get_waypoints();
+
+                const unsigned int current_idx =  waypoint_manager_->get_current_waypoint_index();
+
+                if(waypoints.size() >= 2){
+                    for(unsigned int i = current_idx; i+1  < waypoints.size(); ++i)
+                    {
+                        prev_waypoint = waypoints[i];
+                        next_waypoint = waypoints[i + 1];
+
+                        alpha_k = atan2(next_waypoint.y - prev_waypoint.y,next_waypoint.x - prev_waypoint.x);
+                        s = (x-prev_waypoint.x)*cos(alpha_k)+(y-prev_waypoint.y)*sin(alpha_k);
+                        e = -(x-prev_waypoint.x)*sin(alpha_k)+(y-prev_waypoint.y)*cos(alpha_k);
+                        p = std::hypot(next_waypoint.x - prev_waypoint.x, next_waypoint.y - prev_waypoint.y);
+
+                        if(std::abs(e)<R)
+                            delta = sqrt(R*R-e*e);
+                        else
+                            delta = 0.0;
+                        if(delta + s <= p)
+                            break;
+                    }
+                } else {
+                    R  = 0.0;
+                    delta = 0.0;
+                }
+            }
+                        
+            target_waypoint = next_waypoint;
+
+            double desired_velocity = next_waypoint.velocity;
+
             if(desired_velocity <=0.01){
                 desired_velocity = 2.0;
             }
             pid_x_->set_max_output(desired_velocity);
             pid_y_->set_max_output(desired_velocity);
 
-            double yaw_vel{};
-            double alpha_k = atan2(target_waypoint.y-last_waypoint.y,target_waypoint.x-last_waypoint.x);  // αk := atan2 (yk+1 − yk, xk+1 − xk) ∈ S (10.55)
-            double s = (x-last_waypoint.x)*cos(alpha_k) +(y-last_waypoint.y)*sin(alpha_k);                // along-track distance  s(t) = [x(t) − xk] cos(αk) + [y(t) − yk] sin(αk) (10.58)
-            double e =-(x-last_waypoint.x)*sin(alpha_k) + (y-last_waypoint.y)*cos(alpha_k);     //cross track error:  e(t) = −[x(t) − xk] sin(αk) + [y(t) − yk] cos(αk) (10.59)
-            double p = std::hypot(last_waypoint.x - target_waypoint.x,last_waypoint.y-target_waypoint.y);
-            if(s >= p){
-                s=p;
-                R = 0.0;
-            }
-            if(std::abs(e) < R){
-                delta = sqrt(R*R-e*e);
-            } else {
-                delta = 0;
-            }
+            double x_los = prev_waypoint.x + (s+delta)*cos(alpha_k);
+            double y_los = prev_waypoint.y + (s+delta)*sin(alpha_k);
 
-            double x_los = last_waypoint.x + (s+delta)*cos(alpha_k);
-            double y_los = last_waypoint.y + (s+delta)*sin(alpha_k);
+            target_waypoint.x = x_los;
+            target_waypoint.y = y_los;
 
             double X_d = atan2(y_los-y,x_los-x);
 
             //double e_x = last_waypoint.x+s*cos(alpha_k); // cross track coordinates
             //double e_y = last_waypoint.y+s*sin(alpha_k); 
 
-            if(target_waypoint.hold && (((p-s < R) || (p-s < target_waypoint.radius)) || (target_waypoint.type == waypoint_msgs::msg::Waypoint::HOLD))){
-                double error_x_world = target_waypoint.x-x;
-                double error_y_world = target_waypoint.y-y;
+            if(next_waypoint.hold && (((p-s < R) || (p-s < next_waypoint.radius)) || (next_waypoint.type == waypoint_msgs::msg::Waypoint::HOLD))){
+                double error_x_world = next_waypoint.x-x;
+                double error_y_world = next_waypoint.y-y;
 
                 vx = pid_x_->update(error_x_world);
                 vy = pid_y_->update(error_y_world);
@@ -60,28 +104,24 @@
             }
 
             double target_heading;
-            if(target_waypoint.keep_on_track) {
+            if(next_waypoint.keep_on_track) {
                 target_heading = X_d;
             } else {
-                target_heading = target_waypoint.heading;
+                target_heading = next_waypoint.heading;
             }
 
             filtered_heading_ = target_heading * alpha_ + (1-alpha_)*filtered_heading_;
             //Logging 
             target_heading_ = filtered_heading_;
-
-            yaw_vel = pid_heading_->update(angle_wrap(filtered_heading_ - current_states.heading));
+            
+            double yaw_vel = pid_heading_->update(angle_wrap(filtered_heading_ - current_states.heading));
 
             send_velocity_cmd_world(vx, vy, yaw_vel);
+            
         }
 
         geometry_msgs::msg::TwistStamped PositionController::get_velocity_cmd() const{
             return vel_cmd_;
-        }
-
-        void PositionController::set_waypoint(const waypoint_msgs::msg::Waypoint &wp, const waypoint_msgs::msg::Waypoint &last_wp){
-            target_waypoint = wp;
-            last_waypoint = last_wp;
         }
         
         double PositionController::angle_wrap(double radians) {
@@ -115,15 +155,15 @@
         }
 
         void PositionController::init_parameters(){
-            node_->declare_parameter<double>("yaw_kp", 1.0);
-            node_->declare_parameter<double>("yaw_ki", 0.01);
-            node_->declare_parameter<double>("yaw_kd", 0.01);
+            node_->declare_parameter<double>("yaw_kp", 0.9);
+            node_->declare_parameter<double>("yaw_ki", 0.05);
+            node_->declare_parameter<double>("yaw_kd", 0.0);
 
-            node_->declare_parameter<double>("lin_kp", 1.0);
+            node_->declare_parameter<double>("lin_kp", 1.2);
             node_->declare_parameter<double>("lin_ki", 0.1);
             node_->declare_parameter<double>("lin_kd", 0.05);
 
-            node_->declare_parameter<double>("lookahead_distance", 1.0);
+            node_->declare_parameter<double>("lookahead_distance", 0.5);
             node_->declare_parameter<double>("max_linear_velocity", 3.0);
             node_->declare_parameter<double>("max_angular_velocity", 3.0);
             node_->declare_parameter<double>("heading_reference_filter",0.5);

@@ -35,10 +35,15 @@ class WaypointManager {
     waypoint_msgs::msg::Waypoint get_previous_waypoint();
     
     waypoint_msgs::msg::WaypointStatus  get_waypoint_status();
+    const std::vector<waypoint_msgs::msg::Waypoint>  get_waypoints();
+    unsigned int get_current_waypoint_index() const;
+    void set_remaining_distance(const double s);
     private:
     
     void add_to_path(const waypoint_msgs::msg::Waypoint &waypoint);
-    const std::vector<waypoint_msgs::msg::Waypoint>  get_waypoints();
+    
+    
+
 
     void add_list_to_path(const waypoint_msgs::msg::Waypoints &waypoints);
     
@@ -59,7 +64,7 @@ class WaypointManager {
 
     bool handle_waypoint_pass(const waypoint_msgs::msg::Waypoint &wp_pass);
 
-    void publish_waypoint_status();
+
 
     rclcpp::Node::SharedPtr node_;
     float position_x_{};
@@ -76,6 +81,7 @@ class WaypointManager {
     bool hold_timer_started_{};
     bool hold_position_{};
     float initial_heading_{};
+    double along_track_distance_;
 
     rclcpp::Subscription<waypoint_msgs::msg::Waypoint>::SharedPtr waypoint_subscriber_;
     rclcpp::Subscription<waypoint_msgs::msg::Waypoints>::SharedPtr waypoint_list_subscriber_;
