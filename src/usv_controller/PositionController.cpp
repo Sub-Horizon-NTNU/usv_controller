@@ -7,7 +7,28 @@
         init_parameters();
         double initial_heading_deg = node_->get_parameter("initial_heading").as_double();
         filtered_heading_ = initial_heading_deg * M_PI / 180.0;
-        velocity_publisher_ = node_->create_publisher<geometry_msgs::msg::TwistStamped>("mavros/setpoint_velocity/cmd_vel", 10);
+
+        // PX4 direct-actuator offboard publishers (uXRCE-DDS bridge). Replaces MAVROS cmd_vel.
+        offboard_control_mode_pub_ = node_->create_publisher<px4_msgs::msg::OffboardControlMode>(
+            "/fmu/in/offboard_control_mode", 10);
+        actuator_motors_pub_ = node_->create_publisher<px4_msgs::msg::ActuatorMotors>(
+            "/fmu/in/actuator_motors", 10);
+        actuator_servos_pub_ = node_->create_publisher<px4_msgs::msg::ActuatorServos>(
+            "/fmu/in/actuator_servos", 10);
+        vehicle_command_pub_ = node_->create_publisher<px4_msgs::msg::VehicleCommand>(
+            "/fmu/in/vehicle_command", 10);
+
+        // Manual override (joystick teleop over DDS).
+        manual_override_sub_ = node_->create_subscription<std_msgs::msg::Bool>(
+            "selene/manual/override", 10,
+            std::bind(&PositionController::handle_manual_override, this, std::placeholders::_1));
+        manual_cmd_sub_ = node_->create_subscription<geometry_msgs::msg::Twist>(
+            "selene/manual/cmd", 10,
+            std::bind(&PositionController::handle_manual_cmd, this, std::placeholders::_1));
+        manual_estop_sub_ = node_->create_subscription<std_msgs::msg::Bool>(
+            "selene/manual/estop", 10,
+            std::bind(&PositionController::handle_manual_estop, this, std::placeholders::_1));
+
         parameter_callback_ = node_->add_on_set_parameters_callback(std::bind(&PositionController::handle_changed_parameters,this,std::placeholders::_1));
         waypoint_manager_ = std::make_unique<WaypointManager>(node,initial_heading_deg * M_PI / 180.0);
     }
@@ -120,10 +141,6 @@
             
         }
 
-        geometry_msgs::msg::TwistStamped PositionController::get_velocity_cmd() const{
-            return vel_cmd_;
-        }
-        
         double PositionController::angle_wrap(double radians) {
             while (radians > M_PI)  { radians -= 2 * M_PI; }
             while (radians < -M_PI) { radians += 2 * M_PI; }
@@ -131,27 +148,129 @@
             return radians;
         }
 
+        // Called every control tick (20 Hz). Drives the PX4 direct-actuator offboard stream:
+        // maps the guidance/joystick velocity command to a body wrench, runs the omni-X
+        // allocator, and publishes OffboardControlMode + ActuatorMotors/Servos every tick so
+        // PX4 never drops OFFBOARD. Also runs the one-shot auto-arm state machine.
+        // Inputs: vx, vy = desired WORLD-NED velocity; vz = yaw command (rate-ish from PID).
         void PositionController::send_velocity_cmd_world(const float &vx, const float &vy, const float &vz){
-            vel_cmd_.header.stamp =  node_->now();
-            vel_cmd_.header.frame_id = "map"; // World reference frame
-            // NED to ENU
-            vel_cmd_.twist.linear.x = vy;
-            vel_cmd_.twist.linear.y = vx;
-            vel_cmd_.twist.angular.z = -vz;
-            velocity_publisher_->publish(vel_cmd_);
+            // One-shot: command OFFBOARD + arm after a short warm-up of streamed setpoints.
+            // Skipped while e-stopped so the pilot's kill stays latched.
+            if (offboard_setpoint_counter_ == 10 && !estopped_) {
+                set_offboard_mode();
+                arm();
+            }
+
+            // Desired body-frame surge/sway + yaw command.
+            double surge, sway, yaw_cmd;
+            if (manual_override_) {
+                // Joystick command is already body-frame velocity (surge, sway) + yaw rate.
+                surge = manual_cmd_.linear.x;
+                sway = manual_cmd_.linear.y;
+                yaw_cmd = manual_cmd_.angular.z;
+            } else {
+                // LOS gives world-NED velocity; rotate into the body frame.
+                surge = cos(heading_) * vx + sin(heading_) * vy;
+                sway = -sin(heading_) * vx + cos(heading_) * vy;
+                yaw_cmd = vz;
+            }
+
+            // Feedforward velocity -> body wrench (drag model; gains tuned on water), then
+            // omni-X allocation to 4 signed normalized thrusts.
+            std::array<float, 4> thrusts{};
+            if (!estopped_) {
+                const double Fx = surge_force_gain_ * surge;
+                const double Fy = sway_force_gain_ * sway;
+                const double Mz = yaw_force_gain_ * yaw_cmd;
+                thrusts = allocator_->allocate(Fx, Fy, Mz);
+            } // else: leave thrusts at zero.
+
+            publish_offboard_control_mode();
+            publish_actuators(thrusts, /*servos_centered=*/estopped_);
+
+            if (offboard_setpoint_counter_ < 11) {
+                offboard_setpoint_counter_++;
+            }
         }
 
-         void PositionController::send_velocity_cmd_body(const float &vx, const float &vy, const float &vz){
-            //  BODY to NED world
-            double vx_world = cos(heading_)*vx-sin(heading_)*vy;
-            double vy_world = sin(heading_)*vx+cos(heading_)*vy;
-            vel_cmd_.header.stamp =  node_->now();
-            vel_cmd_.header.frame_id = "map"; // World reference frame
-            // NED to ENU
-            vel_cmd_.twist.linear.x = vy_world;
-            vel_cmd_.twist.linear.y = vx_world;
-            vel_cmd_.twist.angular.z = -vz;
-            velocity_publisher_->publish(vel_cmd_);
+        void PositionController::publish_offboard_control_mode(){
+            px4_msgs::msg::OffboardControlMode msg{};
+            msg.position = false;
+            msg.velocity = false;
+            msg.acceleration = false;
+            msg.attitude = false;
+            msg.body_rate = false;
+            msg.direct_actuator = true;  // omni-X allocation is done here on the companion
+            msg.timestamp = node_->get_clock()->now().nanoseconds() / 1000;
+            offboard_control_mode_pub_->publish(msg);
+        }
+
+        // Publish the 4 thruster magnitudes (ActuatorMotors) and the static azimuth servo
+        // pattern (ActuatorServos). PX4 normalized: motors signed -1..1 (bidirectional ESCs),
+        // servos -1..1. Unused channels are NaN so PX4 leaves them untouched.
+        void PositionController::publish_actuators(const std::array<float, 4> &thrusts, bool servos_centered){
+            const uint64_t ts = node_->get_clock()->now().nanoseconds() / 1000;
+
+            px4_msgs::msg::ActuatorMotors motors{};
+            for (auto &c : motors.control) c = std::nanf("");
+            for (int i = 0; i < 4; ++i) motors.control[i] = thrusts[i];
+            motors.reversible_flags = 0x0F; // motors 0..3 are bidirectional
+            motors.timestamp = ts;
+            motors.timestamp_sample = ts;
+            actuator_motors_pub_->publish(motors);
+
+            px4_msgs::msg::ActuatorServos servos{};
+            for (auto &c : servos.control) c = std::nanf("");
+            for (int i = 0; i < 4; ++i) servos.control[i] = servos_centered ? 0.0f : servo_pattern_[i];
+            servos.timestamp = ts;
+            servos.timestamp_sample = ts;
+            actuator_servos_pub_->publish(servos);
+        }
+
+        void PositionController::publish_vehicle_command(uint16_t command, double param1, double param2){
+            px4_msgs::msg::VehicleCommand msg{};
+            msg.command = command;
+            msg.param1 = param1;
+            msg.param2 = param2;
+            msg.target_system = 1;
+            msg.target_component = 1;
+            msg.source_system = 1;
+            msg.source_component = 1;
+            msg.from_external = true;
+            msg.timestamp = node_->get_clock()->now().nanoseconds() / 1000;
+            vehicle_command_pub_->publish(msg);
+        }
+
+        void PositionController::arm(){
+            publish_vehicle_command(px4_msgs::msg::VehicleCommand::VEHICLE_CMD_COMPONENT_ARM_DISARM, 1.0);
+            RCLCPP_INFO(node_->get_logger(), "Arm command sent");
+        }
+
+        void PositionController::set_offboard_mode(){
+            // base_mode custom enabled (1), PX4 custom main mode OFFBOARD (6).
+            publish_vehicle_command(px4_msgs::msg::VehicleCommand::VEHICLE_CMD_DO_SET_MODE, 1.0, 6.0);
+            RCLCPP_INFO(node_->get_logger(), "OFFBOARD mode command sent");
+        }
+
+        void PositionController::handle_manual_override(const std_msgs::msg::Bool::SharedPtr msg){
+            if (msg->data != manual_override_) {
+                RCLCPP_INFO(node_->get_logger(), "Manual override %s", msg->data ? "ENGAGED" : "released");
+            }
+            manual_override_ = msg->data;
+        }
+
+        void PositionController::handle_manual_cmd(const geometry_msgs::msg::Twist::SharedPtr msg){
+            manual_cmd_ = *msg;
+        }
+
+        void PositionController::handle_manual_estop(const std_msgs::msg::Bool::SharedPtr msg){
+            if (msg->data && !estopped_) {
+                estopped_ = true;
+                publish_vehicle_command(px4_msgs::msg::VehicleCommand::VEHICLE_CMD_COMPONENT_ARM_DISARM, 0.0);
+                RCLCPP_WARN(node_->get_logger(), "E-STOP: disarm command sent");
+            } else if (!msg->data) {
+                estopped_ = false;
+            }
         }
 
         void PositionController::init_parameters(){
@@ -190,6 +309,46 @@
             
             pid_heading_->set_max_output(node_->get_parameter("max_angular_velocity").as_double());
             max_velocity_ = node_->get_parameter("max_linear_velocity").as_double();
+
+            // --- Omni-X geometry + actuator mapping -----------------------------------------
+            // Pods locked at a fixed ±45° X (the ArduSub Lua parked the steering servos here).
+            // Layout from the boat (top-down, bow forward): T1 front-port, T2 rear-port,
+            // T3 front-stbd, T4 rear-stbd; thrust angle pattern [+,-,-,+] · servo_angle.
+            // Body frame: x forward+, y starboard+. SET pod_half_length/width to real metres.
+            node_->declare_parameter<double>("pod_half_length", 0.5);  // |x| of pods [m] (a)
+            node_->declare_parameter<double>("pod_half_width", 0.5);   // |y| of pods [m] (b)
+            node_->declare_parameter<double>("servo_angle_deg", 45.0); // fixed azimuth
+            node_->declare_parameter<double>("max_thrust", 30.0);      // per-pod thrust at ±1.0 [N]
+            // Velocity-command -> body-force feedforward gains (drag model; tune on water).
+            node_->declare_parameter<double>("surge_force_gain", 10.0);
+            node_->declare_parameter<double>("sway_force_gain", 10.0);
+            node_->declare_parameter<double>("yaw_force_gain", 10.0);
+            // Static servo command in PX4 normalized -1..1 for the ±45° offset (depends on the
+            // PX4 servo min/max config; default matches a 500-2500us/±180° servo -> 0.25).
+            node_->declare_parameter<double>("servo_command_norm", 0.25);
+
+            const double a = node_->get_parameter("pod_half_length").as_double();
+            const double b = node_->get_parameter("pod_half_width").as_double();
+            const double th = node_->get_parameter("servo_angle_deg").as_double() * M_PI / 180.0;
+            surge_force_gain_ = node_->get_parameter("surge_force_gain").as_double();
+            sway_force_gain_ = node_->get_parameter("sway_force_gain").as_double();
+            yaw_force_gain_ = node_->get_parameter("yaw_force_gain").as_double();
+
+            std::array<OmniXAllocator::Pod, 4> pods = {{
+                {+a, -b, +th},   // T1 front-port,  +45° (NE)
+                {-a, -b, -th},   // T2 rear-port,   -45° (NW)
+                {+a, +b, -th},   // T3 front-stbd,  -45° (NW)
+                {-a, +b, +th},   // T4 rear-stbd,   +45° (NE)
+            }};
+            allocator_ = std::make_unique<OmniXAllocator>(
+                pods, node_->get_parameter("max_thrust").as_double());
+            if (!allocator_->ok()) {
+                RCLCPP_ERROR(node_->get_logger(),
+                    "Omni-X allocator geometry is singular/uncontrollable - check pod params");
+            }
+
+            const float sn = static_cast<float>(node_->get_parameter("servo_command_norm").as_double());
+            servo_pattern_ = {+sn, -sn, -sn, +sn}; // S1,S2,S3,S4 (matches the Lua offsets)
         }
 
         waypoint_msgs::msg::WaypointStatus PositionController::get_waypoint_status() {

@@ -14,13 +14,14 @@ find_package(geometry_msgs REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 find_package(waypoint_msgs REQUIRED)
+find_package(std_msgs REQUIRED)
+find_package(px4_msgs REQUIRED)
 
 add_executable(usv_controller src/main.cpp
 src/USVNode.cpp
 src/USV.cpp
 src/usv_controller/PID.cpp
 src/usv_controller/PositionController.cpp
-src/usv_controller/USVStates.cpp
 src/usv_controller/WaypointManager.cpp
 src/usv_controller/USVTransformHandler.cpp
 )
@@ -34,6 +35,8 @@ ament_target_dependencies(usv_controller
   tf2_geometry_msgs
   tf2
   waypoint_msgs
+  std_msgs
+  px4_msgs
 )
 
 install(TARGETS usv_controller
