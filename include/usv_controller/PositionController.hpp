@@ -97,7 +97,18 @@ class PositionController{
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr manual_estop_sub_;
     bool manual_override_{false};
     bool estopped_{false};
+    bool armed_{false};
     geometry_msgs::msg::Twist manual_cmd_;
+
+    // AUX outputs on the OrangeCube, addressed by ActuatorServos.control[] index
+    // (= PX4 "Servo N+1" function; map AUX3->Servo7, AUX4->Servo8, AUX5->Servo5,
+    // AUX6->Servo6). AUX3 safety relay gates power to ALL thrusters + azimuth servos:
+    // it MUST be driven high or the boat is dead even when armed. Exactly one light is
+    // on: red = unarmed/relay-off, amber = manual, green = guided.
+    int relay_servo_index_{6};        // AUX3 safety relay
+    int light_red_servo_index_{7};    // AUX4 red   = unarmed / relay off
+    int light_amber_servo_index_{4};  // AUX5 amber = manual
+    int light_green_servo_index_{5};  // AUX6 green = guided/auto
 
     rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr parameter_callback_;
 };

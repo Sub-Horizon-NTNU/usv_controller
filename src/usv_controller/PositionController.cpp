@@ -159,6 +159,7 @@
             if (offboard_setpoint_counter_ == 10 && !estopped_) {
                 set_offboard_mode();
                 arm();
+                armed_ = true;
             }
 
             // Desired body-frame surge/sway + yaw command.
@@ -222,6 +223,19 @@
             px4_msgs::msg::ActuatorServos servos{};
             for (auto &c : servos.control) c = std::nanf("");
             for (int i = 0; i < 4; ++i) servos.control[i] = servos_centered ? 0.0f : servo_pattern_[i];
+
+            // AUX relay + status lights. "active" = armed and not e-stopped; the
+            // relay must be HIGH for any thruster/servo to have power.
+            const bool active = armed_ && !estopped_;
+            auto set_aux = [&](int idx, bool on) {
+                if (idx >= 0 && idx < static_cast<int>(servos.control.size()))
+                    servos.control[idx] = on ? 1.0f : -1.0f;
+            };
+            set_aux(relay_servo_index_, active);                       // AUX3 safety relay
+            set_aux(light_red_servo_index_, !active);                  // AUX4 red = unarmed / relay off
+            set_aux(light_amber_servo_index_, active && manual_override_);   // AUX5 amber = manual
+            set_aux(light_green_servo_index_, active && !manual_override_);  // AUX6 green = guided/auto
+
             servos.timestamp = ts;
             servos.timestamp_sample = ts;
             actuator_servos_pub_->publish(servos);
@@ -266,6 +280,7 @@
         void PositionController::handle_manual_estop(const std_msgs::msg::Bool::SharedPtr msg){
             if (msg->data && !estopped_) {
                 estopped_ = true;
+                armed_ = false;
                 publish_vehicle_command(px4_msgs::msg::VehicleCommand::VEHICLE_CMD_COMPONENT_ARM_DISARM, 0.0);
                 RCLCPP_WARN(node_->get_logger(), "E-STOP: disarm command sent");
             } else if (!msg->data) {
@@ -349,6 +364,12 @@
 
             const float sn = static_cast<float>(node_->get_parameter("servo_command_norm").as_double());
             servo_pattern_ = {+sn, -sn, -sn, +sn}; // S1,S2,S3,S4 (matches the Lua offsets)
+
+            // AUX relay + status lights (ActuatorServos indices). -1 disables a channel.
+            relay_servo_index_ = node_->declare_parameter<int>("relay_servo_index", 6);        // AUX3
+            light_red_servo_index_ = node_->declare_parameter<int>("light_red_servo_index", 7);   // AUX4
+            light_amber_servo_index_ = node_->declare_parameter<int>("light_amber_servo_index", 4); // AUX5
+            light_green_servo_index_ = node_->declare_parameter<int>("light_green_servo_index", 5); // AUX6
         }
 
         waypoint_msgs::msg::WaypointStatus PositionController::get_waypoint_status() {
