@@ -73,7 +73,30 @@
         waypoints_.shrink_to_fit();
         waypoint_index_ = 0;
         handle_none_waypoint();
+
     }
+
+    void WaypointManager::hold_here(float x, float y, float heading){
+        waypoints_.clear();
+        waypoints_.shrink_to_fit();
+        waypoint_index_ = 0;
+
+        most_recent_waypoint_ = waypoint_msgs::msg::Waypoint{};
+        most_recent_waypoint_.x = x;
+        most_recent_waypoint_.y = y;
+        most_recent_waypoint_.heading = heading;
+        most_recent_waypoint_.hold = true;
+        most_recent_waypoint_.keep_on_track = false;
+        most_recent_waypoint_.radius = 0.1;
+        most_recent_waypoint_.type = waypoint_msgs::msg::Waypoint::HOLD;
+
+        previous_waypoint_ = most_recent_waypoint_;
+        hold_position_ = true;   // matches handle_none_waypoint's guard
+
+        RCLCPP_INFO(node_->get_logger(),
+          "Holding at arm pose [%.2f, %.2f], heading %.2f", x, y, heading);
+    }
+
 
     void WaypointManager::update(const float &current_x, const float &current_y, const float &heading){
         bool updated_position{};

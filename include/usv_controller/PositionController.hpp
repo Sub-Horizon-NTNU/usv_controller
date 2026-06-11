@@ -102,6 +102,11 @@ class PositionController{
     bool armed_{false};
     bool arm_requested_{false};   // explicit arm/disarm via selene/arm (no auto-arm)
     uint64_t loop_count_{0};
+
+    // Arm-time origin reset: position frame is zeroed at the arm spot (x stays north).
+    double ox_{}, oy_{};
+    bool origin_set_{false};
+    bool was_armed_{false};
     geometry_msgs::msg::Twist manual_cmd_;
 
     // AUX outputs on the OrangeCube, addressed by ActuatorServos.control[] index

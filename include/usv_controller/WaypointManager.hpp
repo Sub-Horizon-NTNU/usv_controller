@@ -38,6 +38,7 @@ class WaypointManager {
     const std::vector<waypoint_msgs::msg::Waypoint>  get_waypoints();
     unsigned int get_current_waypoint_index() const;
     void set_remaining_distance(const double s);
+    void hold_here(float x, float y, float heading);
     private:
     
     void add_to_path(const waypoint_msgs::msg::Waypoint &waypoint);
