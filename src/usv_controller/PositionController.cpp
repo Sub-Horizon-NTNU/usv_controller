@@ -57,19 +57,14 @@
             double x = current_states.x;
             double y = current_states.y;
             heading_ = current_states.heading;
-  
-            // Origin reset: zero the position frame at the arm spot (x stays north).
-            if (armed_ && !origin_set_) { ox_ = x; oy_ = y; origin_set_ = true; }
-            if (!armed_) origin_set_ = false;
-            if (origin_set_) { x -= ox_; y -= oy_; }
 
-            // On the arm edge with no mission: hold the current spot + heading.
+            // On the arm edge with no mission: hold the current position + heading.
             if (armed_ && !was_armed_) {
                 if (waypoint_manager_->get_waypoints().empty())
                     waypoint_manager_->hold_here(x, y, heading_);
-            }       
+            }
             was_armed_ = armed_;
-              
+
             position_x_ = x;
             position_y_ = y;
             double R = lookahead_distance_; // Lookahead
