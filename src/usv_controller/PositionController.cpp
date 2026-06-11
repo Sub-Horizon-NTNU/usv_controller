@@ -69,8 +69,8 @@
             position_y_ = y;
             double R = lookahead_distance_; // Lookahead
             double delta{};
-            double vx;
-            double vy;
+            double vx{};
+            double vy{};
 
             waypoint_manager_->update(x, y,heading_);
             
@@ -159,11 +159,11 @@
                 target_heading = next_waypoint.heading;
             }
 
-            filtered_heading_ = target_heading * alpha_ + (1-alpha_)*filtered_heading_;
+            //filtered_heading_ = target_heading * alpha_ + (1-alpha_)*filtered_heading_;
             //Logging 
-            target_heading_ = filtered_heading_;
+            //target_heading_ = filtered_heading_;
             
-            double yaw_vel = pid_heading_->update(angle_wrap(filtered_heading_ - current_states.heading));
+            double yaw_vel = pid_heading_->update(angle_wrap(target_heading - current_states.heading));
 
             // P/I/D term contributions for plotting (x=P, y=I, z=D).
             auto publish_pid_terms = [](const auto &pub, const std::shared_ptr<PID> &pid) {
