@@ -49,10 +49,11 @@ class PositionController{
         void arm();
         void set_offboard_mode();
 
-        // Manual override callbacks.
+        // Manual override + arm callbacks.
         void handle_manual_override(const std_msgs::msg::Bool::SharedPtr msg);
         void handle_manual_cmd(const geometry_msgs::msg::Twist::SharedPtr msg);
         void handle_manual_estop(const std_msgs::msg::Bool::SharedPtr msg);
+        void handle_arm(const std_msgs::msg::Bool::SharedPtr msg);
 
         void init_parameters();
         
@@ -95,9 +96,12 @@ class PositionController{
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr manual_override_sub_;
     rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr manual_cmd_sub_;
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr manual_estop_sub_;
+    rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr arm_sub_;
     bool manual_override_{false};
     bool estopped_{false};
     bool armed_{false};
+    bool arm_requested_{false};   // explicit arm/disarm via selene/arm (no auto-arm)
+    uint64_t loop_count_{0};
     geometry_msgs::msg::Twist manual_cmd_;
 
     // AUX outputs on the OrangeCube, addressed by ActuatorServos.control[] index

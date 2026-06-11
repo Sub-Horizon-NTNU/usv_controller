@@ -28,6 +28,9 @@
         manual_estop_sub_ = node_->create_subscription<std_msgs::msg::Bool>(
             "selene/manual/estop", 10,
             std::bind(&PositionController::handle_manual_estop, this, std::placeholders::_1));
+        arm_sub_ = node_->create_subscription<std_msgs::msg::Bool>(
+            "selene/arm", 10,
+            std::bind(&PositionController::handle_arm, this, std::placeholders::_1));
 
         parameter_callback_ = node_->add_on_set_parameters_callback(std::bind(&PositionController::handle_changed_parameters,this,std::placeholders::_1));
         waypoint_manager_ = std::make_unique<WaypointManager>(node,initial_heading_deg * M_PI / 180.0);
@@ -154,13 +157,23 @@
         // PX4 never drops OFFBOARD. Also runs the one-shot auto-arm state machine.
         // Inputs: vx, vy = desired WORLD-NED velocity; vz = yaw command (rate-ish from PID).
         void PositionController::send_velocity_cmd_world(const float &vx, const float &vy, const float &vz){
-            // One-shot: command OFFBOARD + arm after a short warm-up of streamed setpoints.
-            // Skipped while e-stopped so the pilot's kill stays latched.
-            if (offboard_setpoint_counter_ == 10 && !estopped_) {
-                set_offboard_mode();
-                arm();
+            // Explicit arm/disarm (NO auto-arm): only arm when selene/arm requests it,
+            // and only after setpoints have streamed long enough for PX4 to accept
+            // OFFBOARD. Re-assert OFFBOARD+ARM ~2 Hz while requested so a transient
+            // rejection eventually takes (PX4 ignores redundant arm commands). E-stop
+            // clears the request and forces disarm.
+            if (arm_requested_ && !estopped_ && offboard_setpoint_counter_ >= 10) {
+                if (loop_count_ % 10 == 0) {
+                    set_offboard_mode();
+                    arm();
+                }
                 armed_ = true;
+            } else if (armed_ && (!arm_requested_ || estopped_)) {
+                publish_vehicle_command(px4_msgs::msg::VehicleCommand::VEHICLE_CMD_COMPONENT_ARM_DISARM, 0.0);
+                armed_ = false;
+                RCLCPP_INFO(node_->get_logger(), "Disarm command sent");
             }
+            loop_count_++;
 
             // Desired body-frame surge/sway + yaw command.
             double surge, sway, yaw_cmd;
@@ -281,11 +294,23 @@
             if (msg->data && !estopped_) {
                 estopped_ = true;
                 armed_ = false;
+                arm_requested_ = false;   // e-stop clears any arm request
                 publish_vehicle_command(px4_msgs::msg::VehicleCommand::VEHICLE_CMD_COMPONENT_ARM_DISARM, 0.0);
                 RCLCPP_WARN(node_->get_logger(), "E-STOP: disarm command sent");
             } else if (!msg->data) {
                 estopped_ = false;
             }
+        }
+
+        void PositionController::handle_arm(const std_msgs::msg::Bool::SharedPtr msg){
+            if (msg->data && estopped_) {
+                RCLCPP_WARN(node_->get_logger(), "Arm ignored: e-stopped");
+                return;
+            }
+            if (msg->data != arm_requested_) {
+                RCLCPP_INFO(node_->get_logger(), "Arm request: %s", msg->data ? "ARM" : "DISARM");
+            }
+            arm_requested_ = msg->data;
         }
 
         void PositionController::init_parameters(){
