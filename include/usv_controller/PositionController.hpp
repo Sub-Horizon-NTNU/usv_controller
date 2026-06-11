@@ -7,7 +7,10 @@
 #include "usv_controller/PID.hpp"
 #include <waypoint_msgs/msg/waypoint.hpp>
 #include <geometry_msgs/msg/twist.hpp>
+#include <geometry_msgs/msg/wrench.hpp>
+#include <geometry_msgs/msg/vector3.hpp>
 #include <std_msgs/msg/bool.hpp>
+#include <std_msgs/msg/float32_multi_array.hpp>
 #include <waypoint_msgs/msg/waypoint_status.hpp>
 #include <px4_msgs/msg/offboard_control_mode.hpp>
 #include <px4_msgs/msg/actuator_motors.hpp>
@@ -82,6 +85,15 @@ class PositionController{
     rclcpp::Publisher<px4_msgs::msg::ActuatorServos>::SharedPtr actuator_servos_pub_;
     rclcpp::Publisher<px4_msgs::msg::VehicleCommand>::SharedPtr vehicle_command_pub_;
     uint64_t offboard_setpoint_counter_{0};
+
+    // Debug/tuning publishers (plot in PlotJuggler).
+    rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr debug_cmd_body_pub_;     // surge/sway/yaw_cmd
+    rclcpp::Publisher<geometry_msgs::msg::Wrench>::SharedPtr debug_wrench_pub_;      // Fx/Fy/Mz
+    rclcpp::Publisher<std_msgs::msg::Float32MultiArray>::SharedPtr debug_thrusts_pub_; // 4 normalized thrusts
+    rclcpp::Publisher<geometry_msgs::msg::Vector3>::SharedPtr debug_heading_pub_;    // heading/target/error
+    rclcpp::Publisher<geometry_msgs::msg::Vector3>::SharedPtr debug_pid_heading_pub_; // x=P, y=I, z=D
+    rclcpp::Publisher<geometry_msgs::msg::Vector3>::SharedPtr debug_pid_x_pub_;       // x=P, y=I, z=D
+    rclcpp::Publisher<geometry_msgs::msg::Vector3>::SharedPtr debug_pid_y_pub_;       // x=P, y=I, z=D
 
     // Omni-X allocation + body-wrench mapping.
     std::unique_ptr<OmniXAllocator> allocator_;

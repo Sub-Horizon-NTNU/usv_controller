@@ -20,6 +20,8 @@
 
         double d = kd_*(error-prev_error_)/dt;
         prev_error_ = error;
+        last_p_ = p;
+        last_d_ = std::isnan(d) ? 0.0 : d;
         double output = p+i_+d;
 
         //Check if out of bounds

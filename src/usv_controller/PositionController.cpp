@@ -18,6 +18,23 @@
         vehicle_command_pub_ = node_->create_publisher<px4_msgs::msg::VehicleCommand>(
             "/fmu/in/vehicle_command", 10);
 
+        // Debug/tuning topics for live plotting (PlotJuggler).
+        debug_cmd_body_pub_ = node_->create_publisher<geometry_msgs::msg::Twist>(
+            "selene/debug/velocity_cmd_body_surge_sway_yaw", 10);
+        debug_wrench_pub_ = node_->create_publisher<geometry_msgs::msg::Wrench>(
+            "selene/debug/force_cmd_Fx_Fy_Mz", 10);
+        debug_thrusts_pub_ = node_->create_publisher<std_msgs::msg::Float32MultiArray>(
+            "selene/debug/thruster_outputs_normalized", 10);
+        debug_heading_pub_ = node_->create_publisher<geometry_msgs::msg::Vector3>(
+            "selene/debug/heading_current_target_error", 10);
+        // Per-PID term contributions: x=P, y=I, z=D (sum = PID output).
+        debug_pid_heading_pub_ = node_->create_publisher<geometry_msgs::msg::Vector3>(
+            "selene/debug/pid_heading_terms_P_I_D", 10);
+        debug_pid_x_pub_ = node_->create_publisher<geometry_msgs::msg::Vector3>(
+            "selene/debug/pid_pos_x_terms_P_I_D", 10);
+        debug_pid_y_pub_ = node_->create_publisher<geometry_msgs::msg::Vector3>(
+            "selene/debug/pid_pos_y_terms_P_I_D", 10);
+
         // Manual override (joystick teleop over DDS).
         manual_override_sub_ = node_->create_subscription<std_msgs::msg::Bool>(
             "selene/manual/override", 10,
@@ -153,8 +170,19 @@
             
             double yaw_vel = pid_heading_->update(angle_wrap(filtered_heading_ - current_states.heading));
 
+            // P/I/D term contributions for plotting (x=P, y=I, z=D).
+            auto publish_pid_terms = [](const auto &pub, const std::shared_ptr<PID> &pid) {
+                geometry_msgs::msg::Vector3 m{};
+                m.x = pid->get_p();
+                m.y = pid->get_i();
+                m.z = pid->get_d();
+                pub->publish(m);
+            };
+            publish_pid_terms(debug_pid_heading_pub_, pid_heading_);
+            publish_pid_terms(debug_pid_x_pub_, pid_x_);
+            publish_pid_terms(debug_pid_y_pub_, pid_y_);
+
             send_velocity_cmd_world(vx, vy, yaw_vel);
-            
         }
 
         double PositionController::angle_wrap(double radians) {
@@ -211,6 +239,31 @@
                 const double Mz = yaw_force_gain_ * yaw_cmd;
                 thrusts = allocator_->allocate(Fx, Fy, Mz);
             } // else: leave thrusts at zero.
+
+            // Debug topics for PlotJuggler.
+            {
+                geometry_msgs::msg::Twist cmd_msg{};
+                cmd_msg.linear.x = surge;
+                cmd_msg.linear.y = sway;
+                cmd_msg.angular.z = yaw_cmd;
+                debug_cmd_body_pub_->publish(cmd_msg);
+
+                geometry_msgs::msg::Wrench wrench_msg{};
+                wrench_msg.force.x = surge_force_gain_ * surge;
+                wrench_msg.force.y = sway_force_gain_ * sway;
+                wrench_msg.torque.z = yaw_force_gain_ * yaw_cmd;
+                debug_wrench_pub_->publish(wrench_msg);
+
+                std_msgs::msg::Float32MultiArray thrusts_msg{};
+                thrusts_msg.data.assign(thrusts.begin(), thrusts.end());
+                debug_thrusts_pub_->publish(thrusts_msg);
+
+                geometry_msgs::msg::Vector3 heading_msg{};
+                heading_msg.x = heading_;                                  // current heading [rad]
+                heading_msg.y = filtered_heading_;                         // target (filtered) heading [rad]
+                heading_msg.z = angle_wrap(filtered_heading_ - heading_);  // heading error [rad]
+                debug_heading_pub_->publish(heading_msg);
+            }
 
             publish_offboard_control_mode();
             publish_actuators(thrusts, /*servos_centered=*/estopped_);
@@ -393,6 +446,7 @@
                 {+a, +b, -th},   // T3 front-stbd,  -45° (NW)
                 {-a, +b, +th},   // T4 rear-stbd,   +45° (NE)
             }};
+            
             allocator_ = std::make_unique<OmniXAllocator>(
                 pods, node_->get_parameter("max_thrust").as_double());
             if (!allocator_->ok()) {
@@ -471,6 +525,22 @@
                 pid_x_->set_kd(parameter.as_double());
                 pid_y_->set_kd(parameter.as_double());
                 RCLCPP_INFO(node_->get_logger(),"PID X/Y Kd set to: %.4f", param_val);
+            }
+            else if(parameter.get_name() == "heading_reference_filter"){
+                alpha_ = param_val;
+                RCLCPP_INFO(node_->get_logger(),"heading_reference_filter set to: %.4f", param_val);
+            }
+            else if(parameter.get_name() == "surge_force_gain"){
+                surge_force_gain_ = param_val;
+                RCLCPP_INFO(node_->get_logger(),"surge_force_gain set to: %.4f", param_val);
+            }
+            else if(parameter.get_name() == "sway_force_gain"){
+                sway_force_gain_ = param_val;
+                RCLCPP_INFO(node_->get_logger(),"sway_force_gain set to: %.4f", param_val);
+            }
+            else if(parameter.get_name() == "yaw_force_gain"){
+                yaw_force_gain_ = param_val;
+                RCLCPP_INFO(node_->get_logger(),"yaw_force_gain set to: %.4f", param_val);
             }
             else {
                 result.successful = false;

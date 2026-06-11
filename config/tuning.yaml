@@ -1,0 +1,15 @@
+usv_controller:
+  ros__parameters:
+    yaw_kp: 1.0
+    yaw_ki: 0.0
+    yaw_kd: 1.0
+    lin_kp: 1.0
+    lin_ki: 0.0
+    lin_kd: 1.0
+    lookahead_distance: 0.5
+    max_linear_velocity: 2.0
+    max_angular_velocity: 2.0
+    heading_reference_filter: 0.5
+    surge_force_gain: 10.0
+    sway_force_gain: 10.0
+    yaw_force_gain: 10.0

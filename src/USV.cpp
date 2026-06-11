@@ -1,6 +1,4 @@
 #include "USV.hpp"
-
-
     USV::USV(rclcpp::Node::SharedPtr node): node_(node){
         node_->declare_parameter<double>("initial_heading", 0.0);
         double initial_heading_deg = node_->get_parameter("initial_heading").as_double();
@@ -8,7 +6,7 @@
         RCLCPP_INFO(node_->get_logger(), "USV CONTROLLER STARTED");
         this->usv_transform_handler_ = std::make_unique<USVTransformHandler>(node_);
         this->position_controller_ = std::make_unique<PositionController>(node_);
-        control_loop_timer_ = node->create_wall_timer(std::chrono::milliseconds(50), std::bind(&USV::update, this));
+        control_loop_timer_ = node->create_wall_timer(std::chrono::milliseconds(20), std::bind(&USV::update, this));
 
         status_publisher_ = node->create_publisher<waypoint_msgs::msg::WaypointStatus>("selene/controller/status",10);
         

@@ -132,7 +132,6 @@
     }
 
     void WaypointManager::update_path(){
-
         if(waypoints_.empty()){ 
             return; 
         }

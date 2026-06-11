@@ -1,3 +1,6 @@
+import os
+
+from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration
@@ -5,30 +8,15 @@ from launch_ros.actions import Node
 
 def generate_launch_description():
 
-    yaw_kp_arg = DeclareLaunchArgument("yaw_kp", default_value="0.9",description="Yaw angular velocity controller Kp")
-    yaw_ki_arg = DeclareLaunchArgument("yaw_ki", default_value="0.05",description="Yaw angular velocity controller Ki")
-    yaw_kd_arg = DeclareLaunchArgument("yaw_kd", default_value="0.0",description="Yaw angular velocity controller Kd")
-    
-    lin_kp_arg = DeclareLaunchArgument("lin_kp", default_value="1.2",description="Linear velocity controller Kp")
-    lin_ki_arg = DeclareLaunchArgument("lin_ki", default_value="0.1",description="Linear velocity controller Ki")
-    lin_kd_arg = DeclareLaunchArgument("lin_kd", default_value="0.05",description="Linear velocity controller Kd")
-    
-    max_linear_velocity_arg = DeclareLaunchArgument("max_linear_velocity", default_value="3.0",description="Maximum linear velocity [m/s]")
-    max_angular_velocity_arg = DeclareLaunchArgument("max_angular_velocity",default_value="3.0",description="Maximum angular velocity [rad/s]")
-    lookahead_distance_arg = DeclareLaunchArgument("lookahead_distance", default_value="0.5", description="Distance on path too navigate towards [m]")
-    heading_reference_filter_arg = DeclareLaunchArgument("heading_reference_filter", default_value="0.5", description="Distance on path too navigate towards [m]")
+    default_config = os.path.join(
+        get_package_share_directory("usv_controller"), "config", "tuning.yaml")
+
+    config_arg = DeclareLaunchArgument(
+        "config", default_value=default_config,
+        description="YAML file with tuning parameters")
     initial_heading_arg = DeclareLaunchArgument("initial_heading",default_value="0.0",description="Initial heading when booting up");
     return LaunchDescription([
-        yaw_kp_arg,
-        yaw_ki_arg,
-        yaw_kd_arg,
-        lin_kp_arg,
-        lin_ki_arg,
-        lin_kd_arg,
-        max_linear_velocity_arg,
-        max_angular_velocity_arg,
-        lookahead_distance_arg,
-        heading_reference_filter_arg,
+        config_arg,
         initial_heading_arg,
         Node(
             package="usv_controller",
@@ -36,16 +24,7 @@ def generate_launch_description():
             name="usv_controller",
             output="screen",
             parameters= [
-                {"yaw_kp": LaunchConfiguration("yaw_kp")},
-                {"yaw_ki": LaunchConfiguration("yaw_ki")},
-                {"yaw_kd": LaunchConfiguration("yaw_kd")},
-                {"lin_kp": LaunchConfiguration("lin_kp")},
-                {"lin_ki": LaunchConfiguration("lin_ki")},
-                {"lin_kd": LaunchConfiguration("lin_kd")},
-                {"max_linear_velocity": LaunchConfiguration("max_linear_velocity")},
-                {"max_angular_velocity": LaunchConfiguration("max_angular_velocity")},
-                {"lookahead_distance": LaunchConfiguration("lookahead_distance")},
-                {"heading_reference_filter": LaunchConfiguration("heading_reference_filter")},
+                LaunchConfiguration("config"),
                 {"initial_heading": LaunchConfiguration("initial_heading")}
             ])
     ])
